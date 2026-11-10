@@ -1,4 +1,4 @@
-# ProjectLens
+# ProjectLens AI
 
 ProjectLens is a VS Code extension that analyzes the workspace you have open and reports on its technologies, code quality, security risks, implementation progress and production readiness. All core analysis is **local and deterministic**. AI review is optional, works with **Groq, OpenAI, Google Gemini or Anthropic Claude**, and only runs when you trigger it and approve the exact context that will be sent.
 
