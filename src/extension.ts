@@ -17,7 +17,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<{ cont
   c.setDashboardOpener(openDashboard);
 
   context.subscriptions.push(
-    vscode.window.registerWebviewViewProvider(SidebarProvider.viewId, new SidebarProvider(context.extensionUri, c), {
+    vscode.window.registerWebviewViewProvider(SidebarProvider.viewId, new SidebarProvider(context.extensionUri, c, () => openDashboard()), {
       webviewOptions: { retainContextWhenHidden: false }
     }),
     vscode.commands.registerCommand('projectlens.quickScan', () => c.runScan('quick')),
