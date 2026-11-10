@@ -1,4 +1,4 @@
-import type { AIUsage } from '../models/ai';
+import type { AIProviderId, AIUsage } from '../models/ai';
 
 export type OutputMode = 'json_schema' | 'json_object' | 'prompt';
 
@@ -20,9 +20,9 @@ export interface CompletionResponse {
   model: string;
 }
 
-/** Provider abstraction. Groq is the only implementation in the MVP. */
+/** Provider abstraction implemented by Groq, OpenAI, Gemini and Anthropic. */
 export interface AIProvider {
-  readonly id: string;
+  readonly id: AIProviderId;
   readonly displayName: string;
   complete(request: CompletionRequest): Promise<CompletionResponse>;
   listModels(signal?: AbortSignal): Promise<string[]>;

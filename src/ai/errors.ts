@@ -15,6 +15,7 @@ export type AIErrorKind =
   | 'limit'
   | 'consent-declined'
   | 'unsupported-format'
+  | 'refused'
   | 'unknown';
 
 const RETRYABLE: ReadonlySet<AIErrorKind> = new Set(['rate-limit', 'server', 'timeout', 'network']);
@@ -42,28 +43,30 @@ export class AIError extends Error {
 }
 
 /** User-facing guidance for each error kind. */
-export function describeAIError(err: unknown): string {
+export function describeAIError(err: unknown, provider = 'the AI provider'): string {
   if (!(err instanceof AIError)) {
     return err instanceof Error ? err.message : String(err);
   }
   switch (err.kind) {
     case 'no-key':
-      return 'No Groq API key is configured. Run "ProjectLens: Set Groq API Key".';
+      return `No ${provider} API key is configured. Run "ProjectLens: Set AI API Key".`;
     case 'auth':
-      return 'Groq rejected the API key (401). Check or replace it with "ProjectLens: Set Groq API Key".';
+      return `${provider} rejected the API key (${err.status ?? 401}). Check or replace it with "ProjectLens: Set AI API Key".`;
     case 'forbidden':
-      return `Groq denied access (403). The key may lack permission for this model or your organization/region is restricted. ${err.message}`;
+      return `${provider} denied access (403). The key may lack permission for this model or your organization/region is restricted. ${err.message}`;
     case 'model':
     case 'not-found':
-      return `The selected model is unavailable: ${err.message}. Pick another model with "ProjectLens: Select Groq Model".`;
+      return `The selected model is unavailable: ${err.message}. Pick another model with "ProjectLens: Select AI Model".`;
     case 'rate-limit':
-      return `Groq rate limit reached (429).${err.retryAfterMs ? ` Retry after ~${Math.ceil(err.retryAfterMs / 1000)} s.` : ''} Try again later or lower request volume.`;
+      return `${provider} rate limit reached (429).${err.retryAfterMs ? ` Retry after ~${Math.ceil(err.retryAfterMs / 1000)} s.` : ''} Try again later or lower request volume.`;
     case 'server':
-      return `Groq is temporarily unavailable (${err.status ?? '5xx'}). Please retry shortly.`;
+      return `${provider} is temporarily unavailable (${err.status ?? '5xx'}). Please retry shortly.`;
     case 'timeout':
-      return 'The Groq request timed out. Retry, or increase projectlens.ai.requestTimeoutSeconds.';
+      return `The ${provider} request timed out. Retry, or increase projectlens.ai.requestTimeoutSeconds.`;
     case 'network':
-      return 'Could not reach Groq. Check your internet connection or proxy settings. Local analysis keeps working offline.';
+      return `Could not reach ${provider}. Check your internet connection or proxy settings. Local analysis keeps working offline.`;
+    case 'refused':
+      return `${provider} declined to answer: ${err.message} Try a different task or model.`;
     case 'too-large':
       return 'The request was too large for the model. Lower projectlens.ai.maxContextTokens or review a smaller scope.';
     case 'invalid-response':

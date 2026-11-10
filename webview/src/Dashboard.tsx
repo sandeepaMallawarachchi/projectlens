@@ -169,7 +169,7 @@ export function Dashboard({ initialTab }: { initialTab: string }) {
                 </Button>
               </>
             )}
-            <Button icon={<Sparkles size={14} />} disabled={aiBusy || !state.workspace} loading={aiBusy} onClick={() => post({ type: 'aiRun', task: 'projectAssessment' })} title={aiEnabled ? 'Groq-powered project assessment' : 'Requires a Groq API key'}>
+            <Button icon={<Sparkles size={14} />} disabled={aiBusy || !state.workspace} loading={aiBusy} onClick={() => post({ type: 'aiRun', task: 'projectAssessment' })} title={aiEnabled ? `AI project assessment (${state.ai.providers.find((p) => p.id === state.ai.provider)?.label ?? state.ai.provider})` : 'Requires an API key for the selected AI provider'}>
               AI Deep Review
             </Button>
             <button className="icon-btn" onClick={() => post({ type: 'refresh' })} title="Refresh" aria-label="Refresh">

@@ -79,7 +79,7 @@ export function Sidebar() {
             </Button>
           </>
         )}
-        <Button icon={<Sparkles size={13} />} loading={!!state.ai.running} disabled={!!state.ai.running} onClick={() => post({ type: 'aiRun', task: 'projectAssessment' })} title={state.ai.hasApiKey ? 'Groq-powered assessment' : 'Requires a Groq API key'}>
+        <Button icon={<Sparkles size={13} />} loading={!!state.ai.running} disabled={!!state.ai.running} onClick={() => post({ type: 'aiRun', task: 'projectAssessment' })} title={state.ai.hasApiKey ? `AI assessment (${state.ai.providers.find((p) => p.id === state.ai.provider)?.label ?? state.ai.provider})` : 'Requires an API key for the selected AI provider'}>
           AI Deep Review
         </Button>
       </div>

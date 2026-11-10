@@ -30,7 +30,8 @@ export interface ConsentPreview {
 }
 
 export interface AIServiceDeps {
-  provider: AIProvider;
+  /** Active provider, resolved per request so provider/model switches apply immediately. */
+  provider: () => AIProvider;
   settings: () => AISettings;
   readFile: FileReader;
   /** Must return true only after explicit user approval. */
@@ -87,16 +88,17 @@ export class AIService {
 
   async run(req: ContextRequest, signal?: AbortSignal): Promise<AIInsight> {
     const settings = this.deps.settings();
+    const provider = this.deps.provider();
     const contexts = await this.prepare(req);
     if (this.requestsThisSession + contexts.length > settings.maxRequestsPerSession) {
-      throw new AIError('limit', `Session limit of ${settings.maxRequestsPerSession} Groq requests reached (projectlens.ai.maxRequestsPerSession). Reload the window or raise the limit.`);
+      throw new AIError('limit', `Session limit of ${settings.maxRequestsPerSession} AI requests reached (projectlens.ai.maxRequestsPerSession). Reload the window or raise the limit.`);
     }
     const instructions = TASK_INSTRUCTIONS[req.task];
     const prompts = contexts.map((c) => renderUserPrompt(c, instructions));
     const preview: ConsentPreview = {
       title: contexts[0].title || AI_TASK_LABELS[req.task],
       model: settings.model,
-      provider: this.deps.provider.displayName,
+      provider: provider.displayName,
       files: contexts.flatMap((c) => c.files.map((f) => ({ path: f.path, lines: `${f.startLine}-${f.endLine}`, redactions: f.redactions, truncated: f.truncated }))),
       excluded: contexts.flatMap((c) => c.excluded),
       estimatedTokens: contexts.reduce((s, c) => s + c.estimatedTokens, 0),
@@ -119,7 +121,7 @@ export class AIService {
     for (let i = 0; i < contexts.length; i++) {
       this.requestsThisSession++;
       const res = await this.getLimiter().run(() =>
-        this.deps.provider.complete({
+        provider.complete({
           model: settings.model,
           system: SYSTEM_PROMPT,
           user: prompts[i],
@@ -153,6 +155,7 @@ export class AIService {
       title: contexts[0].title || AI_TASK_LABELS[req.task],
       target: contexts[0].target,
       createdAt: new Date().toISOString(),
+      provider: provider.id,
       model,
       outputMode,
       analysis,

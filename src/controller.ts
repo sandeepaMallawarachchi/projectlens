@@ -3,20 +3,21 @@ import * as path from 'node:path';
 import type { AppState, HostMessage, WebviewMessage } from './models/messages';
 import { parseWebviewMessage } from './models/messages';
 import type { ScanMode, ScanResult } from './models/types';
-import type { AIInsight, AITask } from './models/ai';
-import { AI_TASK_LABELS } from './models/ai';
+import type { AIInsight, AIProviderId, AITask } from './models/ai';
+import { AI_PROVIDER_IDS, AI_PROVIDERS, AI_TASK_LABELS } from './models/ai';
 import { scanWorkspace } from './core/scanner';
 import { buildJsonReport, buildMarkdownReport } from './core/report';
 import { CancelledError } from './utils/async';
 import type { ScanStore } from './storage/scanStore';
-import { GroqKeyStore } from './storage/secretStore';
-import { GroqProvider } from './ai/providers/GroqProvider';
+import { ApiKeyStore } from './storage/secretStore';
+import { createProvider } from './ai/providers';
+import type { AIProvider } from './ai/AIProvider';
 import { AIService, type ConsentPreview } from './ai/aiService';
 import { AIError, describeAIError } from './ai/errors';
 import { DiagnosticsPublisher } from './views/diagnostics';
 import { resolveNavigationTarget } from './views/navigation';
 import { REQUIREMENTS_FILE, REQUIREMENTS_TEMPLATE } from './analyzers/progress/requirements';
-import { getConfig } from './config';
+import { getConfig, modelFor, modelSettingKey } from './config';
 import { isInside } from './utils/paths';
 
 export interface WebviewSink {
@@ -28,8 +29,8 @@ const MAX_AI_FILE_BYTES = 1024 * 1024;
 export class ProjectLensController implements vscode.Disposable {
   private readonly sinks = new Set<WebviewSink>();
   private readonly diagnostics = new DiagnosticsPublisher();
-  private readonly keyStore: GroqKeyStore;
-  private readonly provider: GroqProvider;
+  private readonly keyStore: ApiKeyStore;
+  private readonly providers = new Map<AIProviderId, AIProvider>();
   private readonly ai: AIService;
   private scanAbort: AbortController | null = null;
   private aiAbort: AbortController | null = null;
@@ -43,15 +44,9 @@ export class ProjectLensController implements vscode.Disposable {
     private readonly context: vscode.ExtensionContext,
     readonly store: ScanStore
   ) {
-    this.keyStore = new GroqKeyStore(context.secrets);
-    this.provider = new GroqProvider({
-      getApiKey: () => this.keyStore.get(),
-      timeoutMs: () => getConfig().ai.requestTimeoutMs,
-      maxRetries: () => getConfig().ai.maxRetries,
-      onRetry: (attempt, delay, err) => this.log(`Groq request retry ${attempt} in ${delay} ms (${err.kind}${err.status ? ` ${err.status}` : ''})`)
-    });
+    this.keyStore = new ApiKeyStore(context.secrets);
     this.ai = new AIService({
-      provider: this.provider,
+      provider: () => this.activeProvider(),
       settings: () => getConfig().ai,
       readFile: (uri) => this.readWorkspaceFile(uri),
       consent: (preview) => this.askConsent(preview),
@@ -71,6 +66,8 @@ export class ProjectLensController implements vscode.Disposable {
       result: null,
       history: store.history(),
       ai: {
+        provider: cfg.ai.provider,
+        providers: [],
         hasApiKey: false,
         model: cfg.ai.model,
         availableModels: [],
@@ -85,7 +82,7 @@ export class ProjectLensController implements vscode.Disposable {
   }
 
   async init(): Promise<void> {
-    this.state.ai.hasApiKey = await this.keyStore.has();
+    await this.refreshAiState();
     this.state.result = await this.store.loadLatest();
     if (this.state.result) {
       this.publishDiagnostics(this.state.result);
@@ -94,7 +91,7 @@ export class ProjectLensController implements vscode.Disposable {
       vscode.workspace.onDidChangeConfiguration((e) => {
         if (e.affectsConfiguration('projectlens')) {
           const cfg = getConfig();
-          this.state.ai.model = cfg.ai.model;
+          void this.refreshAiState().then(() => this.broadcast());
           this.state.settings = { gitleaksEnabled: cfg.gitleaks.enabled, diagnosticsEnabled: cfg.diagnostics.enabled };
           if (this.state.result && e.affectsConfiguration('projectlens.diagnostics')) {
             this.publishDiagnostics(this.state.result);
@@ -112,7 +109,7 @@ export class ProjectLensController implements vscode.Disposable {
       }),
       this.context.secrets.onDidChange(async (e) => {
         if (e.key.startsWith('projectlens.')) {
-          this.state.ai.hasApiKey = await this.keyStore.has();
+          await this.refreshAiState();
           this.broadcast();
         }
       })
@@ -192,7 +189,7 @@ export class ProjectLensController implements vscode.Disposable {
     switch (msg.type) {
       case 'ready':
       case 'refresh':
-        this.state.ai.hasApiKey = await this.keyStore.has();
+        await this.refreshAiState();
         this.state.history = this.store.history();
         this.broadcast(true);
         return;
@@ -222,10 +219,13 @@ export class ProjectLensController implements vscode.Disposable {
         this.broadcast();
         return;
       case 'setApiKey':
-        await this.setApiKey();
+        await this.setApiKey(msg.provider);
         return;
       case 'removeApiKey':
-        await this.removeApiKey();
+        await this.removeApiKey(msg.provider);
+        return;
+      case 'setProvider':
+        await this.selectProvider(msg.provider);
         return;
       case 'testConnection':
         await this.testConnection();
@@ -234,9 +234,7 @@ export class ProjectLensController implements vscode.Disposable {
         await this.listModels(false);
         return;
       case 'setModel':
-        await vscode.workspace.getConfiguration('projectlens').update('ai.model', msg.model, vscode.ConfigurationTarget.Global);
-        this.state.ai.model = msg.model;
-        this.broadcast();
+        await this.setModel(msg.model);
         return;
       case 'export':
         await this.exportReport(msg.format);
@@ -372,9 +370,9 @@ export class ProjectLensController implements vscode.Disposable {
       `${preview.requests} request(s) to ${preview.provider}, model ${preview.model}.\n` +
       `Context: local analysis summary + ${preview.files.length} file excerpt(s), ~${preview.estimatedTokens.toLocaleString('en-US')} tokens, ${preview.redactions} secret redaction(s).\n` +
       `Files: ${preview.files.slice(0, 8).map((f) => `${f.path}:${f.lines}`).join(', ') || 'none (summary only)'}${preview.files.length > 8 ? '…' : ''}.${excluded}\n\n` +
-      'Nothing is uploaded until you choose Send. Groq processes the data according to its own terms.';
+      `Nothing is uploaded until you choose Send. ${preview.provider} processes the data according to its own terms.`;
     for (;;) {
-      const choice = await vscode.window.showWarningMessage(`Send redacted context to Groq for "${preview.title}"?`, { modal: true, detail }, 'Send', 'Send (don’t ask again this session)', 'Preview Payload');
+      const choice = await vscode.window.showWarningMessage(`Send redacted context to ${preview.provider} for "${preview.title}"?`, { modal: true, detail }, 'Send', 'Send (don’t ask again this session)', 'Preview Payload');
       if (choice === 'Send') {
         return true;
       }
@@ -396,12 +394,20 @@ export class ProjectLensController implements vscode.Disposable {
       void vscode.window.showInformationMessage('ProjectLens: an AI request is already running.');
       return null;
     }
-    if (!(await this.keyStore.has())) {
-      const pick = await vscode.window.showInformationMessage('ProjectLens AI features require a Groq API key. Local analysis works without it.', 'Set Groq API Key');
-      if (pick) {
-        await this.setApiKey();
+    const providerId = getConfig().ai.provider;
+    const label = this.providerLabel(providerId);
+    if (!(await this.keyStore.has(providerId))) {
+      const pick = await vscode.window.showInformationMessage(
+        `ProjectLens AI features need an API key for the selected provider (${label}). Local analysis works without it.`,
+        `Set ${label} API Key`,
+        'Choose Another Provider'
+      );
+      if (pick === 'Choose Another Provider') {
+        await this.selectProvider();
+      } else if (pick) {
+        await this.setApiKey(providerId);
       }
-      if (!(await this.keyStore.has())) {
+      if (!(await this.keyStore.has(getConfig().ai.provider))) {
         return null;
       }
     }
@@ -430,14 +436,14 @@ export class ProjectLensController implements vscode.Disposable {
       const insight = await this.ai.run({ task, scan, findingId: target.findingId, moduleId: target.moduleId, fileUri: target.fileUri, filePath }, abort.signal);
       this.state.ai.sessionUsage.requests = this.ai.sessionRequests;
       this.state.ai.insights = await this.store.addInsight(insight);
-      this.state.ai.connection = { status: 'ok', message: `Last request succeeded (${insight.model})`, checkedAt: new Date().toISOString() };
+      this.state.ai.connection = { status: 'ok', message: `Last request succeeded (${this.providerLabel()} · ${insight.model})`, checkedAt: new Date().toISOString() };
       this.log(`AI ${task} completed (${insight.requests} request(s), ${insight.usage?.totalTokens ?? '?'} tokens, mode ${insight.outputMode})`);
       for (const s of this.sinks) {
         void s.postMessage({ type: 'navigate', tab: 'ai' });
       }
       return insight;
     } catch (err) {
-      const message = describeAIError(err);
+      const message = describeAIError(err, this.providerLabel());
       this.state.ai.sessionUsage.requests = this.ai.sessionRequests;
       if (err instanceof AIError && (err.kind === 'consent-declined' || err.kind === 'cancelled')) {
         this.log(message);
@@ -462,58 +468,169 @@ export class ProjectLensController implements vscode.Disposable {
     }
   }
 
-  async setApiKey(): Promise<void> {
+  private providerLabel(id: AIProviderId = getConfig().ai.provider): string {
+    return AI_PROVIDERS[id].label;
+  }
+
+  /** Provider implementations are cached per id; each reads its key from SecretStorage per request. */
+  private providerFor(id: AIProviderId): AIProvider {
+    let p = this.providers.get(id);
+    if (!p) {
+      p = createProvider(id, {
+        getApiKey: () => this.keyStore.get(id),
+        timeoutMs: () => getConfig().ai.requestTimeoutMs,
+        maxRetries: () => getConfig().ai.maxRetries,
+        onRetry: (attempt, delay, err) => this.log(`${AI_PROVIDERS[id].label} request retry ${attempt} in ${delay} ms (${err.kind}${err.status ? ` ${err.status}` : ''})`)
+      });
+      this.providers.set(id, p);
+    }
+    return p;
+  }
+
+  private activeProvider(): AIProvider {
+    return this.providerFor(getConfig().ai.provider);
+  }
+
+  /** Recomputes provider/key/model state for the webviews (keys themselves never leave SecretStorage). */
+  private async refreshAiState(): Promise<void> {
+    const cfg = getConfig();
+    const changedProvider = this.state.ai.provider !== cfg.ai.provider;
+    const changedModel = this.state.ai.model !== cfg.ai.model;
+    this.state.ai.provider = cfg.ai.provider;
+    this.state.ai.model = cfg.ai.model;
+    this.state.ai.providers = await Promise.all(
+      AI_PROVIDER_IDS.map(async (id) => ({ id, label: AI_PROVIDERS[id].label, hasApiKey: await this.keyStore.has(id), model: modelFor(id) }))
+    );
+    this.state.ai.hasApiKey = this.state.ai.providers.find((p) => p.id === cfg.ai.provider)?.hasApiKey ?? false;
+    if (changedProvider) {
+      this.state.ai.availableModels = [];
+      this.state.ai.rateLimit = undefined;
+    }
+    if (changedProvider || changedModel) {
+      this.state.ai.connection = { status: 'unknown', message: this.state.ai.hasApiKey ? 'Not tested' : 'No key configured' };
+    }
+  }
+
+  private async pickProvider(title: string, ids: readonly AIProviderId[] = AI_PROVIDER_IDS): Promise<AIProviderId | undefined> {
+    const active = getConfig().ai.provider;
+    const items = await Promise.all(
+      [...ids]
+        .sort((a, b) => (a === active ? -1 : b === active ? 1 : 0))
+        .map(async (id) => ({
+          label: AI_PROVIDERS[id].label,
+          description: [id === active ? 'active' : '', (await this.keyStore.has(id)) ? 'key stored' : 'no key'].filter(Boolean).join(' · '),
+          detail: `Default model: ${AI_PROVIDERS[id].defaultModel}`,
+          id
+        }))
+    );
+    return (await vscode.window.showQuickPick(items, { title, placeHolder: 'Choose an AI provider' }))?.id;
+  }
+
+  async selectProvider(id?: AIProviderId): Promise<void> {
+    const provider = id ?? (await this.pickProvider('ProjectLens: Select AI Provider'));
+    if (!provider) {
+      return;
+    }
+    await vscode.workspace.getConfiguration('projectlens').update('ai.provider', provider, vscode.ConfigurationTarget.Global);
+    await this.refreshAiState();
+    this.broadcast(true);
+    if (!(await this.keyStore.has(provider))) {
+      const set = await vscode.window.showInformationMessage(`${AI_PROVIDERS[provider].label} selected. Add its API key to use AI features.`, 'Set API Key');
+      if (set) {
+        await this.setApiKey(provider);
+      }
+    }
+  }
+
+  async setApiKey(id?: AIProviderId): Promise<void> {
+    const provider = id ?? (await this.pickProvider('ProjectLens: Set AI API Key'));
+    if (!provider) {
+      return;
+    }
+    const info = AI_PROVIDERS[provider];
     const value = await vscode.window.showInputBox({
-      title: 'ProjectLens: Groq API Key',
-      prompt: 'Stored securely in VS Code SecretStorage. Never written to settings or sent anywhere except api.groq.com.',
+      title: `ProjectLens: ${info.label} API Key`,
+      prompt: `Stored securely in VS Code SecretStorage. Never written to settings or sent anywhere except ${info.label}'s API. Get a key at ${info.keyUrl}`,
       password: true,
       ignoreFocusOut: true,
-      placeHolder: 'gsk_…',
+      placeHolder: `${info.keyPrefix}…`,
       validateInput: (v) => (!v.trim() ? 'Enter a key' : /\s/.test(v.trim()) ? 'The key must not contain spaces' : undefined)
     });
     if (!value) {
       return;
     }
-    if (!value.trim().startsWith('gsk_')) {
-      const ok = await vscode.window.showWarningMessage('Groq API keys usually start with "gsk_". Save anyway?', { modal: true }, 'Save');
+    if (!value.trim().startsWith(info.keyPrefix)) {
+      const ok = await vscode.window.showWarningMessage(`${info.label} API keys usually start with "${info.keyPrefix}". Save anyway?`, { modal: true }, 'Save');
       if (ok !== 'Save') {
         return;
       }
     }
-    await this.keyStore.set(value);
-    this.state.ai.hasApiKey = true;
-    this.state.ai.connection = { status: 'unknown', message: 'Key saved — not tested yet' };
+    await this.keyStore.set(provider, value);
+    if (provider !== getConfig().ai.provider) {
+      const use = await vscode.window.showInformationMessage(`${info.label} API key saved securely. Use ${info.label} for AI analysis now?`, `Use ${info.label}`, 'Keep current provider');
+      if (use === `Use ${info.label}`) {
+        await vscode.workspace.getConfiguration('projectlens').update('ai.provider', provider, vscode.ConfigurationTarget.Global);
+      }
+    }
+    await this.refreshAiState();
+    if (provider === getConfig().ai.provider) {
+      this.state.ai.connection = { status: 'unknown', message: 'Key saved — not tested yet' };
+    }
     this.broadcast(true);
-    const test = await vscode.window.showInformationMessage('Groq API key saved securely.', 'Test Connection');
-    if (test) {
-      await this.testConnection();
+    if (provider === getConfig().ai.provider) {
+      const test = await vscode.window.showInformationMessage(`${info.label} API key saved securely.`, 'Test Connection');
+      if (test) {
+        await this.testConnection();
+      }
     }
   }
 
-  async removeApiKey(): Promise<void> {
-    const ok = await vscode.window.showWarningMessage('Remove the stored Groq API key?', { modal: true }, 'Remove');
+  async removeApiKey(id?: AIProviderId): Promise<void> {
+    let provider = id;
+    if (!provider) {
+      const withKeys: AIProviderId[] = [];
+      for (const p of AI_PROVIDER_IDS) {
+        if (await this.keyStore.has(p)) {
+          withKeys.push(p);
+        }
+      }
+      if (!withKeys.length) {
+        void vscode.window.showInformationMessage('No AI API keys are stored.');
+        return;
+      }
+      provider = withKeys.length === 1 ? withKeys[0] : await this.pickProvider('ProjectLens: Remove AI API Key', withKeys);
+    }
+    if (!provider) {
+      return;
+    }
+    const label = AI_PROVIDERS[provider].label;
+    const ok = await vscode.window.showWarningMessage(`Remove the stored ${label} API key?`, { modal: true }, 'Remove');
     if (ok !== 'Remove') {
       return;
     }
-    await this.keyStore.remove();
-    this.state.ai.hasApiKey = false;
-    this.state.ai.availableModels = [];
-    this.state.ai.connection = { status: 'unknown', message: 'No key configured' };
+    await this.keyStore.remove(provider);
+    await this.refreshAiState();
+    if (provider === getConfig().ai.provider) {
+      this.state.ai.availableModels = [];
+      this.state.ai.connection = { status: 'unknown', message: 'No key configured' };
+    }
     this.broadcast(true);
-    void vscode.window.showInformationMessage('Groq API key removed.');
+    void vscode.window.showInformationMessage(`${label} API key removed.`);
   }
 
   async testConnection(): Promise<void> {
-    if (!(await this.keyStore.has())) {
-      void vscode.window.showWarningMessage('No Groq API key configured.', 'Set Groq API Key').then((c) => c && this.setApiKey());
+    const { provider: id, model } = getConfig().ai;
+    const label = this.providerLabel(id);
+    if (!(await this.keyStore.has(id))) {
+      void vscode.window.showWarningMessage(`No ${label} API key configured.`, 'Set API Key').then((c) => c && this.setApiKey(id));
       return;
     }
-    const model = getConfig().ai.model;
     this.state.ai.connection = { status: 'unknown', message: 'Testing…' };
     this.broadcast(true);
+    const provider = this.providerFor(id);
     try {
-      const res = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: 'Testing Groq connection…' }, () => this.provider.testConnection(model));
-      this.state.ai.availableModels = await this.provider.listModels().catch(() => this.state.ai.availableModels);
+      const res = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: `Testing ${label} connection…` }, () => provider.testConnection(model));
+      this.state.ai.availableModels = await provider.listModels().catch(() => this.state.ai.availableModels);
       this.state.ai.connection = { status: res.modelAvailable ? 'ok' : 'error', message: res.message, checkedAt: new Date().toISOString() };
       if (res.modelAvailable) {
         void vscode.window.showInformationMessage(res.message);
@@ -521,35 +638,44 @@ export class ProjectLensController implements vscode.Disposable {
         void vscode.window.showWarningMessage(res.message, 'Select Model').then((c) => c && this.listModels(true));
       }
     } catch (err) {
-      const message = describeAIError(err);
+      const message = describeAIError(err, label);
       this.state.ai.connection = { status: 'error', message, checkedAt: new Date().toISOString() };
-      void vscode.window.showErrorMessage(`Groq connection failed: ${message}`);
+      void vscode.window.showErrorMessage(`${label} connection failed: ${message}`);
     }
     this.broadcast(true);
   }
 
   async listModels(pick: boolean): Promise<void> {
-    if (!(await this.keyStore.has())) {
-      void vscode.window.showWarningMessage('Set a Groq API key to list available models.');
+    const id = getConfig().ai.provider;
+    const label = this.providerLabel(id);
+    if (!(await this.keyStore.has(id))) {
+      void vscode.window.showWarningMessage(`Set a ${label} API key to list available models.`, 'Set API Key').then((c) => c && this.setApiKey(id));
       return;
     }
     try {
-      const models = await this.provider.listModels();
+      const models = await this.providerFor(id).listModels();
       this.state.ai.availableModels = models;
       this.broadcast(true);
       if (pick) {
         const current = getConfig().ai.model;
         const choice = await vscode.window.showQuickPick(
           models.map((m) => ({ label: m, description: m === current ? 'current' : undefined })),
-          { title: 'Select Groq model', placeHolder: current }
+          { title: `Select ${label} model`, placeHolder: current }
         );
         if (choice) {
-          await vscode.workspace.getConfiguration('projectlens').update('ai.model', choice.label, vscode.ConfigurationTarget.Global);
+          await this.setModel(choice.label);
         }
       }
     } catch (err) {
-      void vscode.window.showErrorMessage(`Could not list Groq models: ${describeAIError(err)}`);
+      void vscode.window.showErrorMessage(`Could not list ${label} models: ${describeAIError(err, label)}`);
     }
+  }
+
+  private async setModel(model: string): Promise<void> {
+    const id = getConfig().ai.provider;
+    await vscode.workspace.getConfiguration('projectlens').update(modelSettingKey(id), model, vscode.ConfigurationTarget.Global);
+    await this.refreshAiState();
+    this.broadcast(true);
   }
 
   // ───────────────────────────── Reports & storage ─────────────────────────────

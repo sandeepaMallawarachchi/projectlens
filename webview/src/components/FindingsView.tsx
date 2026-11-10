@@ -288,7 +288,7 @@ export function FindingDetail({ finding: f, onClose, aiEnabled, aiBusy }: { find
         <Button variant="primary" icon={<ArrowUpRight size={14} />} onClick={() => openFile(f.location.uri, f.location.line, f.location.column, f.location.endLine, f.location.endColumn)}>
           Open in editor
         </Button>
-        <Button icon={<Sparkles size={14} />} disabled={!aiEnabled || aiBusy} title={aiEnabled ? 'Ask Groq to explain this finding' : 'Configure a Groq API key on the AI Insights tab'} onClick={() => post({ type: 'aiRun', task: 'explainFinding', findingId: f.id })}>
+        <Button icon={<Sparkles size={14} />} disabled={!aiEnabled || aiBusy} title={aiEnabled ? 'Ask the AI provider to explain this finding' : 'Configure an AI provider key on the AI Insights tab'} onClick={() => post({ type: 'aiRun', task: 'explainFinding', findingId: f.id })}>
           Explain with AI
         </Button>
         <Button icon={<Sparkles size={14} />} disabled={!aiEnabled || aiBusy} onClick={() => post({ type: 'aiRun', task: 'reviewFile', fileUri: f.location.uri })}>

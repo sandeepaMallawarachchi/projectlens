@@ -20,8 +20,15 @@ describe('dashboard rendering', () => {
       history: [],
       settings: { gitleaksEnabled: false, diagnosticsEnabled: true },
       ai: {
+        provider: 'anthropic',
+        providers: [
+          { id: 'groq', label: 'Groq', hasApiKey: true, model: 'openai/gpt-oss-20b' },
+          { id: 'openai', label: 'OpenAI', hasApiKey: false, model: 'gpt-5-mini' },
+          { id: 'gemini', label: 'Google Gemini', hasApiKey: false, model: 'gemini-2.5-flash' },
+          { id: 'anthropic', label: 'Anthropic Claude', hasApiKey: false, model: 'claude-opus-5-5' }
+        ],
         hasApiKey: false,
-        model: 'openai/gpt-oss-20b',
+        model: 'claude-opus-5-5',
         availableModels: [],
         running: null,
         lastError: null,
@@ -45,5 +52,9 @@ describe('dashboard rendering', () => {
     }
     const security = renderToString(<SecurityPage result={result} focus={null} onClearFocus={noop} aiEnabled={false} aiBusy={false} />);
     expect(security).not.toContain('Qz8vT2mLx9Rk4Wp7');
+    const ai = renderToString(<AIInsights state={state} hasResult />);
+    for (const label of ['Groq', 'OpenAI', 'Google Gemini', 'Anthropic Claude']) {
+      expect(ai).toContain(label);
+    }
   });
 });

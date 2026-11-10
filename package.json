@@ -1,7 +1,7 @@
 {
   "name": "projectlens",
   "displayName": "ProjectLens",
-  "description": "Analyze your workspace for technologies, code quality, security risks, implementation progress and production readiness — with optional Groq-powered AI review.",
+  "description": "Analyze your workspace for technologies, code quality, security risks, implementation progress and production readiness \u2014 with optional AI review via Groq, OpenAI, Gemini or Claude.",
   "version": "0.1.0",
   "publisher": "projectlens-dev",
   "private": true,
@@ -17,8 +17,11 @@
     "security",
     "code quality",
     "analysis",
+    "ai review",
     "groq",
-    "ai review"
+    "openai",
+    "gemini",
+    "claude"
   ],
   "main": "./dist/extension.js",
   "activationEvents": [
@@ -91,23 +94,28 @@
         "category": "ProjectLens"
       },
       {
-        "command": "projectlens.setGroqApiKey",
-        "title": "Set Groq API Key",
+        "command": "projectlens.setApiKey",
+        "title": "Set AI API Key",
         "category": "ProjectLens"
       },
       {
-        "command": "projectlens.testGroqConnection",
-        "title": "Test Groq Connection",
+        "command": "projectlens.selectProvider",
+        "title": "Select AI Provider",
         "category": "ProjectLens"
       },
       {
-        "command": "projectlens.removeGroqApiKey",
-        "title": "Remove Groq API Key",
+        "command": "projectlens.testConnection",
+        "title": "Test AI Connection",
         "category": "ProjectLens"
       },
       {
-        "command": "projectlens.selectGroqModel",
-        "title": "Select Groq Model",
+        "command": "projectlens.removeApiKey",
+        "title": "Remove AI API Key",
+        "category": "ProjectLens"
+      },
+      {
+        "command": "projectlens.selectModel",
+        "title": "Select AI Model",
         "category": "ProjectLens"
       },
       {
@@ -155,52 +163,84 @@
     "configuration": {
       "title": "ProjectLens",
       "properties": {
-        "projectlens.ai.model": {
+        "projectlens.ai.provider": {
+          "type": "string",
+          "enum": [
+            "groq",
+            "openai",
+            "gemini",
+            "anthropic"
+          ],
+          "enumDescriptions": [
+            "Groq Cloud",
+            "OpenAI",
+            "Google Gemini",
+            "Anthropic Claude"
+          ],
+          "default": "groq",
+          "description": "AI provider used for AI analysis. Each provider uses its own API key stored in SecretStorage."
+        },
+        "projectlens.ai.groq.model": {
           "type": "string",
           "default": "openai/gpt-oss-20b",
-          "description": "Groq model used for AI analysis."
+          "description": "Groq model."
+        },
+        "projectlens.ai.openai.model": {
+          "type": "string",
+          "default": "gpt-5-mini",
+          "description": "OpenAI model."
+        },
+        "projectlens.ai.gemini.model": {
+          "type": "string",
+          "default": "gemini-2.5-flash",
+          "description": "Google Gemini model."
+        },
+        "projectlens.ai.anthropic.model": {
+          "type": "string",
+          "default": "claude-opus-5-5",
+          "description": "Anthropic Claude model."
         },
         "projectlens.ai.maxContextTokens": {
           "type": "number",
           "default": 6000,
           "minimum": 1000,
           "maximum": 60000,
-          "description": "Approximate upper bound of input tokens sent to Groq per request."
+          "description": "Approximate upper bound of input tokens sent to the AI provider per request."
         },
         "projectlens.ai.maxOutputTokens": {
           "type": "number",
           "default": 2500,
           "minimum": 256,
           "maximum": 16000,
-          "description": "Maximum number of tokens Groq may generate per request."
+          "description": "Maximum tokens the model may generate per request. Claude and Gemini use at least 16000 / 8192 because thinking tokens count toward this limit."
         },
         "projectlens.ai.requestTimeoutSeconds": {
           "type": "number",
           "default": 60,
           "minimum": 5,
           "maximum": 300,
-          "description": "Timeout for a single Groq request."
+          "description": "Timeout for a single AI request."
         },
         "projectlens.ai.maxRetries": {
           "type": "number",
           "default": 3,
           "minimum": 0,
           "maximum": 6,
-          "description": "Retries for temporary Groq errors (429, 5xx, network)."
+          "description": "Retries for temporary AI errors (429, 5xx, network)."
         },
         "projectlens.ai.maxConcurrentRequests": {
           "type": "number",
           "default": 2,
           "minimum": 1,
           "maximum": 4,
-          "description": "Maximum number of concurrent Groq requests."
+          "description": "Maximum number of concurrent AI requests."
         },
         "projectlens.ai.maxRequestsPerSession": {
           "type": "number",
           "default": 40,
           "minimum": 1,
           "maximum": 500,
-          "description": "Hard limit on Groq requests per VS Code session."
+          "description": "Hard limit on AI requests per VS Code session."
         },
         "projectlens.scan.maxFileSizeKb": {
           "type": "number",
@@ -284,6 +324,8 @@
     "typescript-eslint": "^8.72.2"
   },
   "devDependencies": {
+    "@anthropic-ai/sdk": "^1.7.0",
+    "@google/genai": "^3.0.0",
     "@types/mocha": "^10.0.10",
     "@types/node": "^24.19.2",
     "@types/react": "^19.3.0",
@@ -300,6 +342,7 @@
     "ignore": "^7.0.14",
     "lucide-react": "^1.71.0",
     "mocha": "^12.0.3",
+    "openai": "^7.55.0",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "vite": "^8.3.7",

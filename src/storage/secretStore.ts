@@ -1,37 +1,41 @@
 import type * as vscode from 'vscode';
+import { AI_PROVIDER_IDS, type AIProviderId } from '../models/ai';
 
-const GROQ_KEY = 'projectlens.groq.apiKey';
+/** SecretStorage key per provider. `projectlens.groq.apiKey` is unchanged from earlier versions. */
+export const secretKeyFor = (id: AIProviderId) => `projectlens.${id}.apiKey`;
 
-/** Groq credentials live exclusively in VS Code SecretStorage (OS keychain backed). */
-export class GroqKeyStore {
-  private cached: string | undefined | null = null;
+/** AI provider credentials live exclusively in VS Code SecretStorage (OS keychain backed). */
+export class ApiKeyStore {
+  private readonly cache = new Map<AIProviderId, string | undefined>();
 
   constructor(private readonly secrets: vscode.SecretStorage) {
     secrets.onDidChange((e) => {
-      if (e.key === GROQ_KEY) {
-        this.cached = null;
+      for (const id of AI_PROVIDER_IDS) {
+        if (e.key === secretKeyFor(id)) {
+          this.cache.delete(id);
+        }
       }
     });
   }
 
-  async get(): Promise<string | undefined> {
-    if (this.cached === null) {
-      this.cached = await this.secrets.get(GROQ_KEY);
+  async get(id: AIProviderId): Promise<string | undefined> {
+    if (!this.cache.has(id)) {
+      this.cache.set(id, await this.secrets.get(secretKeyFor(id)));
     }
-    return this.cached ?? undefined;
+    return this.cache.get(id) || undefined;
   }
 
-  async has(): Promise<boolean> {
-    return !!(await this.get());
+  async has(id: AIProviderId): Promise<boolean> {
+    return !!(await this.get(id));
   }
 
-  async set(value: string): Promise<void> {
-    await this.secrets.store(GROQ_KEY, value.trim());
-    this.cached = value.trim();
+  async set(id: AIProviderId, value: string): Promise<void> {
+    await this.secrets.store(secretKeyFor(id), value.trim());
+    this.cache.set(id, value.trim());
   }
 
-  async remove(): Promise<void> {
-    await this.secrets.delete(GROQ_KEY);
-    this.cached = undefined;
+  async remove(id: AIProviderId): Promise<void> {
+    await this.secrets.delete(secretKeyFor(id));
+    this.cache.set(id, undefined);
   }
 }

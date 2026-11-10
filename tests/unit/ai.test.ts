@@ -240,7 +240,7 @@ describe('AIService', () => {
   it('sends nothing when consent is declined', async () => {
     const scan = await scanFixture('vulnerable-app');
     const { client, bodies } = fakeClient([() => completion(JSON.stringify(VALID))]);
-    const service = new AIService({ provider: provider(client), settings, readFile: async () => 'const a = 1;', consent: async () => false });
+    const service = new AIService({ provider: () => provider(client), settings, readFile: async () => 'const a = 1;', consent: async () => false });
     await expect(service.run({ task: 'architectureSummary', scan })).rejects.toMatchObject({ kind: 'consent-declined' });
     expect(bodies).toHaveLength(0);
   });
@@ -249,7 +249,7 @@ describe('AIService', () => {
     const scan = await scanFixture('vulnerable-app');
     const { client, bodies } = fakeClient([() => completion(JSON.stringify(VALID))]);
     const consent = vi.fn(async () => true);
-    const service = new AIService({ provider: provider(client), settings, readFile: async () => 'const a = 1;', consent });
+    const service = new AIService({ provider: () => provider(client), settings, readFile: async () => 'const a = 1;', consent });
     const insight = await service.run({ task: 'securityConcerns', scan });
     expect(insight.analysis.summary).toBe(VALID.summary);
     expect(insight.usage?.totalTokens).toBe(150);
@@ -265,7 +265,7 @@ describe('AIService', () => {
   it('rejects malformed AI output safely', async () => {
     const scan = await scanFixture('healthy-nextjs');
     const { client } = fakeClient([() => completion('I cannot produce JSON today')]);
-    const service = new AIService({ provider: provider(client), settings, readFile: async () => '', consent: async () => true });
+    const service = new AIService({ provider: () => provider(client), settings, readFile: async () => '', consent: async () => true });
     await expect(service.run({ task: 'architectureSummary', scan })).rejects.toMatchObject({ kind: 'invalid-response' });
   });
 });

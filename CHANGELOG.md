@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- AI providers: OpenAI, Google Gemini and Anthropic Claude alongside Groq, each with its own SecretStorage key and model setting.
+- New commands: Select AI Provider, Set/Remove AI API Key, Test AI Connection, Select AI Model. The old Groq command IDs still work.
+- Provider SDKs are loaded lazily and the extension bundle is minified.
+
 ## 0.1.0
 
 Initial MVP:

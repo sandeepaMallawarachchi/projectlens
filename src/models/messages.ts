@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { AI_TASKS } from './ai';
+import { AI_PROVIDER_IDS, AI_TASKS } from './ai';
 import type { AIState } from './ai';
 import type { ScanHistoryEntry, ScanMode, ScanResult } from './types';
 
@@ -27,8 +27,9 @@ export const webviewMessageSchema = z.discriminatedUnion('type', [
   }),
   z.object({ type: z.literal('aiCancel') }),
   z.object({ type: z.literal('aiDeleteInsight'), id: z.string().max(200) }),
-  z.object({ type: z.literal('setApiKey') }),
-  z.object({ type: z.literal('removeApiKey') }),
+  z.object({ type: z.literal('setApiKey'), provider: z.enum(AI_PROVIDER_IDS).optional() }),
+  z.object({ type: z.literal('removeApiKey'), provider: z.enum(AI_PROVIDER_IDS).optional() }),
+  z.object({ type: z.literal('setProvider'), provider: z.enum(AI_PROVIDER_IDS) }),
   z.object({ type: z.literal('testConnection') }),
   z.object({ type: z.literal('listModels') }),
   z.object({ type: z.literal('setModel'), model: z.string().min(1).max(200).regex(/^[\w./:-]+$/) }),

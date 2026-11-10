@@ -1,5 +1,28 @@
 import { z } from 'zod';
 
+export const AI_PROVIDER_IDS = ['groq', 'openai', 'gemini', 'anthropic'] as const;
+export type AIProviderId = (typeof AI_PROVIDER_IDS)[number];
+
+export interface AIProviderInfo {
+  id: AIProviderId;
+  label: string;
+  defaultModel: string;
+  /** Typical key prefix, used only for a soft validation warning. */
+  keyPrefix: string;
+  keyUrl: string;
+}
+
+export const AI_PROVIDERS: Record<AIProviderId, AIProviderInfo> = {
+  groq: { id: 'groq', label: 'Groq', defaultModel: 'openai/gpt-oss-20b', keyPrefix: 'gsk_', keyUrl: 'https://console.groq.com/keys' },
+  openai: { id: 'openai', label: 'OpenAI', defaultModel: 'gpt-5-mini', keyPrefix: 'sk-', keyUrl: 'https://platform.openai.com/api-keys' },
+  gemini: { id: 'gemini', label: 'Google Gemini', defaultModel: 'gemini-2.5-flash', keyPrefix: 'AI', keyUrl: 'https://aistudio.google.com/apikey' },
+  anthropic: { id: 'anthropic', label: 'Anthropic Claude', defaultModel: 'claude-opus-5-5', keyPrefix: 'sk-ant-', keyUrl: 'https://console.anthropic.com/settings/keys' }
+};
+
+export function isProviderId(value: unknown): value is AIProviderId {
+  return typeof value === 'string' && (AI_PROVIDER_IDS as readonly string[]).includes(value);
+}
+
 export const AI_TASKS = [
   'explainFinding',
   'reviewFile',
@@ -62,7 +85,7 @@ export const aiAnalysisSchema = z.object({
 export type AIAnalysis = z.infer<typeof aiAnalysisSchema>;
 export type AIFileReference = z.infer<typeof fileReferenceSchema> & { uri?: string; verified?: boolean };
 
-/** JSON Schema sent to Groq when structured outputs are supported. Mirrors `aiAnalysisSchema`. */
+/** JSON Schema sent to providers that support structured outputs. Mirrors `aiAnalysisSchema`. */
 export const AI_ANALYSIS_JSON_SCHEMA = (() => {
   const sev = { type: 'string', enum: ['critical', 'high', 'medium', 'low', 'info'] };
   const conf = { type: 'string', enum: ['high', 'medium', 'low'] };
@@ -132,6 +155,8 @@ export interface AIInsight {
   title: string;
   target?: string;
   createdAt: string;
+  /** Older insights (before multi-provider support) have no provider and came from Groq. */
+  provider?: AIProviderId;
   model: string;
   outputMode: 'json_schema' | 'json_object' | 'prompt';
   analysis: AIAnalysis;
@@ -144,6 +169,11 @@ export interface AIInsight {
 }
 
 export interface AIState {
+  /** Active provider used for AI requests. */
+  provider: AIProviderId;
+  /** Key status for every provider (the key itself never reaches the webview). */
+  providers: { id: AIProviderId; label: string; hasApiKey: boolean; model: string }[];
+  /** Whether the active provider has a key. */
   hasApiKey: boolean;
   model: string;
   availableModels: string[];

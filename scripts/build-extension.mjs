@@ -11,6 +11,8 @@ const options = {
   format: 'cjs',
   target: 'node20',
   sourcemap: true,
+  minify: !watch,
+  keepNames: true,
   // Shipped as runtime dependencies (they rely on dynamic requires).
   external: ['vscode', 'typescript', 'eslint', 'typescript-eslint'],
   logLevel: 'info'

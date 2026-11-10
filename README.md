@@ -1,6 +1,6 @@
 # ProjectLens
 
-ProjectLens is a VS Code extension that analyzes the workspace you have open and reports on its technologies, code quality, security risks, implementation progress and production readiness. All core analysis is **local and deterministic**. Groq Cloud AI is optional and only runs when you trigger it and approve the exact context that will be sent.
+ProjectLens is a VS Code extension that analyzes the workspace you have open and reports on its technologies, code quality, security risks, implementation progress and production readiness. All core analysis is **local and deterministic**. AI review is optional, works with **Groq, OpenAI, Google Gemini or Anthropic Claude**, and only runs when you trigger it and approve the exact context that will be sent.
 
 > Everything ProjectLens reports is advisory static analysis. Each finding has a confidence level and a detection status. A scan with no findings does **not** prove a project is secure or complete.
 
@@ -18,7 +18,7 @@ ProjectLens is a VS Code extension that analyzes the workspace you have open and
 | **Progress estimation** | Infers functional modules from pages, API routes, Express routers, models and services. Each module is rated *Implemented* or *Partial* from evidence: placeholder functions, mock data, 501 responses, "coming soon" text, TODOs, and UI calls to API routes that don't exist. You can add an optional `.projectlens.json` for requirements-weighted completion. |
 | **Transparent scoring** | Code Quality, Security Health, Implementation Evidence and Production Readiness are computed from named checks with weights. Each check's status (passed, failed, unavailable or skipped) is recorded and viewable under "Why this score?". Confirmed critical issues cap Security at 40. When evidence is too thin, the result is "Not assessed" rather than an invented number. |
 | **Problems panel** | Deterministic, non-speculative findings at or above a configurable severity. AI output never appears here. |
-| **Groq AI (optional)** | Explain a finding, review a file or module, summarize the architecture, find incomplete patterns, prioritize improvements, explain security concerns, or produce a full project assessment (AI Deep Review). |
+| **AI review (optional)** | Choose Groq, OpenAI, Google Gemini or Anthropic Claude; each has its own key. Explain a finding, review a file or module, summarize the architecture, find incomplete patterns, prioritize improvements, explain security concerns, or produce a full project assessment (AI Deep Review). |
 | **Reports** | JSON and Markdown export including scan timestamp, scope, coverage, warnings, scores with check tables, findings and AI insights. |
 | **History** | Local scan summaries with score trends. |
 
@@ -26,7 +26,7 @@ ProjectLens is a VS Code extension that analyzes the workspace you have open and
 
 - VS Code **1.90** or newer
 - Node.js **20+** for development (tested with Node 24)
-- Optional: a [Groq API key](https://console.groq.com/keys) for AI features
+- Optional, for AI features: an API key from [Groq](https://console.groq.com/keys), [OpenAI](https://platform.openai.com/api-keys), [Google AI Studio](https://aistudio.google.com/apikey) or [Anthropic](https://console.anthropic.com/settings/keys)
 - Optional: a locally installed [Gitleaks](https://github.com/gitleaks/gitleaks) binary
 
 ## Getting started (development)
@@ -35,7 +35,7 @@ ProjectLens is a VS Code extension that analyzes the workspace you have open and
 npm install
 npm run build        # type-check, bundle the extension (esbuild) and the React webview (Vite)
 npm run lint
-npm run test         # Vitest unit tests (114 tests, no network required)
+npm run test         # Vitest unit tests (125 tests, no network required)
 ```
 
 ### Run and debug in the Extension Development Host
@@ -74,11 +74,13 @@ Before publishing to the Marketplace:
 | `ProjectLens: Quick Scan` | Manifests, technologies, secrets, environment, configuration and dependency checks. |
 | `ProjectLens: Full Scan` | Everything in Quick Scan, plus AST security and quality rules, ESLint, markers, duplicates, progress evidence and (if enabled) Gitleaks. |
 | `ProjectLens: Cancel Scan` | Cancels the running scan. |
-| `ProjectLens: AI Deep Review` | Groq project assessment from the latest scan. |
+| `ProjectLens: AI Deep Review` | AI project assessment from the latest scan, using the selected provider. |
 | `ProjectLens: Review Current File with AI` | Also available from the editor context menu for JS/TS files. |
 | `ProjectLens: Open Dashboard` | Opens the full dashboard in an editor tab. |
-| `ProjectLens: Set Groq API Key` / `Test Groq Connection` / `Remove Groq API Key` | Credential management through SecretStorage. |
-| `ProjectLens: Select Groq Model` | Lists the models available to your key and saves your choice. |
+| `ProjectLens: Select AI Provider` | Switches between Groq, OpenAI, Google Gemini and Anthropic Claude. |
+| `ProjectLens: Set AI API Key` / `Remove AI API Key` | Stores or removes a provider's key in SecretStorage. Each provider keeps its own key. |
+| `ProjectLens: Test AI Connection` | Verifies the active provider's key and model by listing models (no tokens spent). |
+| `ProjectLens: Select AI Model` | Lists the active provider's models and saves your choice for that provider. |
 | `ProjectLens: Export Report as JSON` / `as Markdown` | Exports the latest scan. |
 | `ProjectLens: Clear Scan History` | Deletes local history, the analysis cache, the latest result and AI insights. |
 | `ProjectLens: Create .projectlens.json Requirements File` | Creates a requirements template. |
@@ -87,13 +89,17 @@ Before publishing to the Marketplace:
 
 | Setting | Default | Notes |
 |---|---|---|
-| `projectlens.ai.model` | `openai/gpt-oss-20b` | Any chat model available to your Groq key. |
+| `projectlens.ai.provider` | `groq` | `groq`, `openai`, `gemini` or `anthropic`. |
+| `projectlens.ai.groq.model` | `openai/gpt-oss-20b` | |
+| `projectlens.ai.openai.model` | `gpt-5-mini` | |
+| `projectlens.ai.gemini.model` | `gemini-2.5-flash` | |
+| `projectlens.ai.anthropic.model` | `claude-opus-5-5` | |
 | `projectlens.ai.maxContextTokens` | `6000` | Approximate input budget per request. |
-| `projectlens.ai.maxOutputTokens` | `2500` | |
+| `projectlens.ai.maxOutputTokens` | `2500` | Claude uses at least 16000 and Gemini at least 8192, because thinking tokens count toward the limit. |
 | `projectlens.ai.requestTimeoutSeconds` | `60` | |
 | `projectlens.ai.maxRetries` | `3` | Applies to 429, 5xx, timeouts and network errors only. |
 | `projectlens.ai.maxConcurrentRequests` | `2` | |
-| `projectlens.ai.maxRequestsPerSession` | `40` | Hard cap; Groq is never called without limits. |
+| `projectlens.ai.maxRequestsPerSession` | `40` | Hard cap across all providers. |
 | `projectlens.scan.maxFileSizeKb` | `512` | Larger files are skipped and counted under coverage. |
 | `projectlens.scan.maxFiles` | `8000` | Per workspace folder. |
 | `projectlens.scan.respectGitignore` | `true` | Root and nested `.gitignore` files. |
@@ -124,8 +130,8 @@ Without this file, ProjectLens shows **Implementation Evidence**: the mean compl
 
 ## Security and privacy
 
-- **The Groq API key** is stored only in VS Code SecretStorage, which is backed by the OS keychain. It is never written to settings, sent to the webview, logged, or included in reports.
-- **Groq requests** come only from the extension host. The webview's Content Security Policy blocks all network access (`connect-src 'none'`) and allows only nonce-tagged local scripts.
+- **API keys** for every provider are stored only in VS Code SecretStorage, which is backed by the OS keychain, one entry per provider. They are never written to settings, sent to the webview, logged, or included in reports.
+- **AI requests** go directly from the extension host to the selected provider's API, using its official SDK (`groq-sdk`, `openai`, `@google/genai`, `@anthropic-ai/sdk`). SDKs are loaded only when that provider is first used. The webview's Content Security Policy blocks all network access (`connect-src 'none'`) and allows only nonce-tagged local scripts.
 - **AI requests run only when you trigger them.** Before anything is sent, a modal shows the model, the file excerpts, the token estimate, how many values were redacted, and which files were excluded. **Preview Payload** opens the exact text.
 - **The context builder:**
   - sends a compact summary of the local analysis plus only the relevant excerpts, within a token budget
@@ -162,7 +168,8 @@ src/
   scoring/scoring.ts          check-based, explainable scores and recommended actions
   ai/
     AIProvider.ts             provider abstraction
-    providers/GroqProvider.ts groq-sdk, structured output fallback, error mapping
+    providers/                Groq and OpenAI (shared Chat Completions base), Gemini, Anthropic Claude;
+                              structured output with fallback modes, shared error mapping
     retry.ts, errors.ts       backoff with Retry-After, error taxonomy
     contextBuilder.ts         selection, exclusion, redaction, budgeting
     aiService.ts              consent, limits, batching, validation
@@ -186,4 +193,5 @@ To add support for a new language, add an analyzer that takes a `FileContext` an
 - Express routes mounted under a prefix are matched by path suffix when checking UI→API connections. Projects using Next.js rewrites or a Vite proxy skip this check.
 - Remote and virtual file systems aren't supported. Remote SSH and WSL work because the extension runs on the remote host.
 - Gitleaks integration uses `gitleaks detect --no-git` and has been unit-tested against its JSON report format, but not against a live binary in this repository's CI.
-- Groq calls are covered by mocked tests. Running them against the live API requires your own key.
+- All four providers are covered by mocked API tests only. Running them against the live APIs requires your own keys.
+- Claude requests on models that support it (Opus 5/5.5, Fable 5, Sonnet 5.5) enable Anthropic's server-side refusal fallback (`fallbacks: "default"`). Any remaining refusal from a provider is reported as "declined".

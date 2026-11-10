@@ -159,7 +159,7 @@ export function Progress({ result, aiEnabled, aiBusy }: { result: ScanResult; ai
                         variant="ghost"
                         icon={<Sparkles size={13} />}
                         disabled={!aiEnabled || aiBusy}
-                        title={aiEnabled ? 'Review this module with Groq' : 'Configure Groq on the AI Insights tab'}
+                        title={aiEnabled ? 'Review this module with AI' : 'Configure an AI provider on the AI Insights tab'}
                         onClick={(e) => {
                           e.stopPropagation();
                           post({ type: 'aiRun', task: 'reviewModule', moduleId: m.id });

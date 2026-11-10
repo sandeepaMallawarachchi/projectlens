@@ -1602,3 +1602,11 @@ button.stat:hover {
     transition: none !important;
   }
 }
+
+.provider-row {
+  padding: 3px 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.provider-row:last-child {
+  border-bottom: 0;
+}

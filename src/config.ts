@@ -1,12 +1,26 @@
 import * as vscode from 'vscode';
 import type { Severity } from './models/types';
-import { DEFAULT_GROQ_MODEL } from './ai/providers/GroqProvider';
+import { AI_PROVIDERS, isProviderId, type AIProviderId } from './models/ai';
+
+/** Setting key holding the model for a provider, e.g. `ai.anthropic.model`. */
+export const modelSettingKey = (id: AIProviderId) => `ai.${id}.model`;
+
+export function modelFor(id: AIProviderId): string {
+  const c = vscode.workspace.getConfiguration('projectlens');
+  const configured = c.get<string>(modelSettingKey(id), '');
+  // `ai.model` was the Groq model setting before multi-provider support.
+  const legacy = id === 'groq' ? c.get<string>('ai.model', '') : '';
+  return configured || legacy || AI_PROVIDERS[id].defaultModel;
+}
 
 export function getConfig() {
   const c = vscode.workspace.getConfiguration('projectlens');
+  const providerSetting = c.get<string>('ai.provider', 'groq');
+  const provider: AIProviderId = isProviderId(providerSetting) ? providerSetting : 'groq';
   return {
     ai: {
-      model: c.get<string>('ai.model', DEFAULT_GROQ_MODEL) || DEFAULT_GROQ_MODEL,
+      provider,
+      model: modelFor(provider),
       maxContextTokens: c.get<number>('ai.maxContextTokens', 6000),
       maxOutputTokens: c.get<number>('ai.maxOutputTokens', 2500),
       requestTimeoutMs: c.get<number>('ai.requestTimeoutSeconds', 60) * 1000,
