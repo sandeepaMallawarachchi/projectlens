@@ -1,0 +1,309 @@
+{
+  "name": "projectlens",
+  "displayName": "ProjectLens",
+  "description": "Analyze your workspace for technologies, code quality, security risks, implementation progress and production readiness — with optional Groq-powered AI review.",
+  "version": "0.1.0",
+  "publisher": "projectlens-dev",
+  "private": true,
+  "engines": {
+    "vscode": "^1.90.0",
+    "node": ">=20"
+  },
+  "categories": [
+    "Linters",
+    "Other"
+  ],
+  "keywords": [
+    "security",
+    "code quality",
+    "analysis",
+    "groq",
+    "ai review"
+  ],
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": "limited",
+      "description": "In untrusted workspaces ProjectLens only runs its built-in in-memory analyzers. External scanners such as Gitleaks are disabled.",
+      "restrictedConfigurations": [
+        "projectlens.gitleaks.enabled",
+        "projectlens.gitleaks.path"
+      ]
+    },
+    "virtualWorkspaces": false
+  },
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "projectlens",
+          "title": "ProjectLens",
+          "icon": "media/projectlens.svg"
+        }
+      ]
+    },
+    "views": {
+      "projectlens": [
+        {
+          "type": "webview",
+          "id": "projectlens.sidebar",
+          "name": "Project Health"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "projectlens.quickScan",
+        "title": "Quick Scan",
+        "category": "ProjectLens"
+      },
+      {
+        "command": "projectlens.fullScan",
+        "title": "Full Scan",
+        "category": "ProjectLens"
+      },
+      {
+        "command": "projectlens.cancelScan",
+        "title": "Cancel Scan",
+        "category": "ProjectLens"
+      },
+      {
+        "command": "projectlens.aiDeepReview",
+        "title": "AI Deep Review",
+        "category": "ProjectLens"
+      },
+      {
+        "command": "projectlens.reviewCurrentFile",
+        "title": "Review Current File with AI",
+        "category": "ProjectLens"
+      },
+      {
+        "command": "projectlens.openDashboard",
+        "title": "Open Dashboard",
+        "category": "ProjectLens"
+      },
+      {
+        "command": "projectlens.openSettings",
+        "title": "Open Settings",
+        "category": "ProjectLens"
+      },
+      {
+        "command": "projectlens.setGroqApiKey",
+        "title": "Set Groq API Key",
+        "category": "ProjectLens"
+      },
+      {
+        "command": "projectlens.testGroqConnection",
+        "title": "Test Groq Connection",
+        "category": "ProjectLens"
+      },
+      {
+        "command": "projectlens.removeGroqApiKey",
+        "title": "Remove Groq API Key",
+        "category": "ProjectLens"
+      },
+      {
+        "command": "projectlens.selectGroqModel",
+        "title": "Select Groq Model",
+        "category": "ProjectLens"
+      },
+      {
+        "command": "projectlens.exportJson",
+        "title": "Export Report as JSON",
+        "category": "ProjectLens"
+      },
+      {
+        "command": "projectlens.exportMarkdown",
+        "title": "Export Report as Markdown",
+        "category": "ProjectLens"
+      },
+      {
+        "command": "projectlens.clearScanHistory",
+        "title": "Clear Scan History",
+        "category": "ProjectLens"
+      },
+      {
+        "command": "projectlens.createRequirementsFile",
+        "title": "Create .projectlens.json Requirements File",
+        "category": "ProjectLens"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "projectlens.quickScan",
+          "when": "view == projectlens.sidebar",
+          "group": "navigation@1"
+        },
+        {
+          "command": "projectlens.openDashboard",
+          "when": "view == projectlens.sidebar",
+          "group": "navigation@2"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "projectlens.reviewCurrentFile",
+          "when": "editorLangId =~ /(java|type)script/",
+          "group": "z_projectlens"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "ProjectLens",
+      "properties": {
+        "projectlens.ai.model": {
+          "type": "string",
+          "default": "openai/gpt-oss-20b",
+          "description": "Groq model used for AI analysis."
+        },
+        "projectlens.ai.maxContextTokens": {
+          "type": "number",
+          "default": 6000,
+          "minimum": 1000,
+          "maximum": 60000,
+          "description": "Approximate upper bound of input tokens sent to Groq per request."
+        },
+        "projectlens.ai.maxOutputTokens": {
+          "type": "number",
+          "default": 2500,
+          "minimum": 256,
+          "maximum": 16000,
+          "description": "Maximum number of tokens Groq may generate per request."
+        },
+        "projectlens.ai.requestTimeoutSeconds": {
+          "type": "number",
+          "default": 60,
+          "minimum": 5,
+          "maximum": 300,
+          "description": "Timeout for a single Groq request."
+        },
+        "projectlens.ai.maxRetries": {
+          "type": "number",
+          "default": 3,
+          "minimum": 0,
+          "maximum": 6,
+          "description": "Retries for temporary Groq errors (429, 5xx, network)."
+        },
+        "projectlens.ai.maxConcurrentRequests": {
+          "type": "number",
+          "default": 2,
+          "minimum": 1,
+          "maximum": 4,
+          "description": "Maximum number of concurrent Groq requests."
+        },
+        "projectlens.ai.maxRequestsPerSession": {
+          "type": "number",
+          "default": 40,
+          "minimum": 1,
+          "maximum": 500,
+          "description": "Hard limit on Groq requests per VS Code session."
+        },
+        "projectlens.scan.maxFileSizeKb": {
+          "type": "number",
+          "default": 512,
+          "minimum": 16,
+          "description": "Files larger than this are skipped."
+        },
+        "projectlens.scan.maxFiles": {
+          "type": "number",
+          "default": 8000,
+          "minimum": 100,
+          "description": "Maximum number of files analyzed per workspace folder."
+        },
+        "projectlens.scan.respectGitignore": {
+          "type": "boolean",
+          "default": true,
+          "description": "Skip files ignored by .gitignore."
+        },
+        "projectlens.scan.exclude": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Additional gitignore-style patterns to exclude from scans."
+        },
+        "projectlens.gitleaks.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Run a locally installed Gitleaks executable during Full Scan (trusted workspaces only). ProjectLens never installs Gitleaks."
+        },
+        "projectlens.gitleaks.path": {
+          "type": "string",
+          "default": "",
+          "description": "Absolute path to the Gitleaks executable. When empty, PATH is searched."
+        },
+        "projectlens.diagnostics.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Publish deterministic findings to the Problems panel."
+        },
+        "projectlens.diagnostics.minimumSeverity": {
+          "type": "string",
+          "enum": [
+            "critical",
+            "high",
+            "medium",
+            "low",
+            "info"
+          ],
+          "default": "medium",
+          "description": "Minimum severity of findings published to the Problems panel."
+        },
+        "projectlens.history.maxEntries": {
+          "type": "number",
+          "default": 20,
+          "minimum": 1,
+          "maximum": 200,
+          "description": "Number of scan summaries retained in local history."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "npm run typecheck && npm run build:extension && npm run build:webview",
+    "build:extension": "node scripts/build-extension.mjs",
+    "build:webview": "vite build --config webview/vite.config.mts",
+    "watch:extension": "node scripts/build-extension.mjs --watch",
+    "watch:webview": "vite build --config webview/vite.config.mts --watch",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p webview/tsconfig.json --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:integration": "npm run build && node scripts/build-integration-tests.mjs && vscode-test",
+    "package": "vsce package --skip-license --allow-missing-repository",
+    "vscode:prepublish": "npm run build"
+  },
+  "dependencies": {
+    "eslint": "^10.14.0",
+    "typescript": "~5.9.3",
+    "typescript-eslint": "^8.72.2"
+  },
+  "devDependencies": {
+    "@types/mocha": "^10.0.10",
+    "@types/node": "^24.19.2",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@types/vscode": "^1.90.0",
+    "@vitejs/plugin-react": "^6.3.0",
+    "@vscode/test-cli": "^0.0.15",
+    "@vscode/test-electron": "^3.1.0",
+    "@vscode/vsce": "^4.1.0",
+    "esbuild": "^0.28.2",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "globals": "^17.14.0",
+    "groq-sdk": "^1.6.0",
+    "ignore": "^7.0.14",
+    "lucide-react": "^1.71.0",
+    "mocha": "^12.0.3",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "vite": "^8.3.7",
+    "vitest": "^5.1.0",
+    "zod": "^4.6.7"
+  }
+}

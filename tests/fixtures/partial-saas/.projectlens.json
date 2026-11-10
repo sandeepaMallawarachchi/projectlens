@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "features": [
+    { "id": "dashboard", "name": "Dashboard", "weight": 3, "match": ["dashboard"] },
+    { "id": "billing", "name": "Billing", "weight": 2, "match": ["billing"] },
+    { "id": "settings", "name": "User settings", "weight": 1, "match": ["settings"] },
+    { "id": "auth", "name": "Authentication", "weight": 2, "match": ["auth", "login"] }
+  ]
+}

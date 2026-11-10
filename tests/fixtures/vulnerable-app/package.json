@@ -1,0 +1,19 @@
+{
+  "name": "vulnerable-app",
+  "version": "0.0.1",
+  "description": "Deliberately insecure fixture for ProjectLens tests. All credentials are fake.",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "4.17.1",
+    "jsonwebtoken": "8.5.1",
+    "lodash": "4.17.15",
+    "mongoose": "^6.0.0",
+    "mysql2": "^2.3.0",
+    "left-pad": "*"
+  }
+}

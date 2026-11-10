@@ -1,0 +1,34 @@
+# Source, tests and tooling (the extension ships bundled output only)
+.vscode/**
+.vscode-test/**
+.git/**
+.github/**
+src/**
+webview/**
+tests/**
+scripts/**
+coverage/**
+dist/test/**
+dist/**/*.map
+*.vsix
+.gitignore
+.vscode-test.mjs
+eslint.config.mjs
+vitest.config.mts
+tsconfig.json
+
+# Runtime dependencies are only needed for the TS parser and in-memory ESLint
+node_modules/**/*.md
+node_modules/**/*.map
+node_modules/**/*.d.ts
+node_modules/**/*.d.mts
+node_modules/**/*.d.cts
+node_modules/typescript/lib/tsserver*.js
+node_modules/typescript/lib/typingsInstaller.js
+node_modules/typescript/lib/_tsc.js
+node_modules/typescript/lib/_tsserver.js
+node_modules/typescript/lib/_typingsInstaller.js
+node_modules/typescript/lib/tsc.js
+node_modules/typescript/lib/watchGuard.js
+node_modules/typescript/lib/lib.*
+node_modules/typescript/lib/*/diagnosticMessages.generated.json
