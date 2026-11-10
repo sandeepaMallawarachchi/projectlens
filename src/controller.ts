@@ -203,7 +203,7 @@ export class ProjectLensController implements vscode.Disposable {
         this.openDashboardHandler?.(msg.tab);
         return;
       case 'openSettings':
-        await vscode.commands.executeCommand('workbench.action.openSettings', '@ext:projectlens-dev.projectlens');
+        await vscode.commands.executeCommand('workbench.action.openSettings', '@ext:SandeepaMallawarachchi.projectlens');
         return;
       case 'openFile':
         await this.openFile(msg);

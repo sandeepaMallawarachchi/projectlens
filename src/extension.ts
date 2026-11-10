@@ -26,7 +26,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<{ cont
     vscode.commands.registerCommand('projectlens.aiDeepReview', () => c.runAI('projectAssessment')),
     vscode.commands.registerCommand('projectlens.reviewCurrentFile', () => c.reviewActiveFile()),
     vscode.commands.registerCommand('projectlens.openDashboard', (tab?: string) => openDashboard(typeof tab === 'string' ? tab : undefined)),
-    vscode.commands.registerCommand('projectlens.openSettings', () => vscode.commands.executeCommand('workbench.action.openSettings', '@ext:projectlens-dev.projectlens')),
+    vscode.commands.registerCommand('projectlens.openSettings', () => vscode.commands.executeCommand('workbench.action.openSettings', '@ext:SandeepaMallawarachchi.projectlens')),
     vscode.commands.registerCommand('projectlens.setApiKey', () => c.setApiKey()),
     vscode.commands.registerCommand('projectlens.selectProvider', () => c.selectProvider()),
     vscode.commands.registerCommand('projectlens.testConnection', () => c.testConnection()),

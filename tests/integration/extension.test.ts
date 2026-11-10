@@ -8,7 +8,7 @@ import type { ScanResult } from '../../src/models/types';
  */
 suite('ProjectLens extension', () => {
   suiteSetup(async () => {
-    const ext = vscode.extensions.getExtension('projectlens-dev.projectlens');
+    const ext = vscode.extensions.getExtension('SandeepaMallawarachchi.projectlens');
     assert.ok(ext, 'extension is installed');
     await ext.activate();
   });

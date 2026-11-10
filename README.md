@@ -61,11 +61,12 @@ npm run package      # runs vsce package (vscode:prepublish builds first)
 code --install-extension projectlens-0.1.0.vsix
 ```
 
-Before publishing to the Marketplace:
+To publish a new version to the Visual Studio Marketplace (publisher `SandeepaMallawarachchi`):
 
-1. Set your own `publisher` in `package.json` (it is currently `projectlens-dev`).
-2. Add a `repository` field and a `LICENSE` file.
-3. Remove `--skip-license --allow-missing-repository` from the `package` script.
+```bash
+npx vsce login SandeepaMallawarachchi   # once; paste an Azure DevOps token with Marketplace → Manage scope
+npx vsce publish patch                  # bumps the version, builds, and publishes
+```
 
 ## Commands
 

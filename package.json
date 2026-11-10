@@ -3,8 +3,24 @@
   "displayName": "ProjectLens",
   "description": "Analyze your workspace for technologies, code quality, security risks, implementation progress and production readiness \u2014 with optional AI review via Groq, OpenAI, Gemini or Claude.",
   "version": "0.1.0",
-  "publisher": "projectlens-dev",
-  "private": true,
+  "publisher": "SandeepaMallawarachchi",
+  "author": {
+    "name": "Sandeepa Mallawarachchi"
+  },
+  "license": "MIT",
+  "icon": "media/icon.png",
+  "galleryBanner": {
+    "color": "#1e2a3a",
+    "theme": "dark"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sandeepaMallawarachchi/projectlens.git"
+  },
+  "bugs": {
+    "url": "https://github.com/sandeepaMallawarachchi/projectlens/issues"
+  },
+  "homepage": "https://github.com/sandeepaMallawarachchi/projectlens#readme",
   "engines": {
     "vscode": "^1.90.0",
     "node": ">=20"
@@ -315,8 +331,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:integration": "npm run build && node scripts/build-integration-tests.mjs && vscode-test",
-    "package": "vsce package --skip-license --allow-missing-repository",
-    "vscode:prepublish": "npm run build"
+    "package": "vsce package",
+    "vscode:prepublish": "npm run build",
+    "publish:marketplace": "vsce publish"
   },
   "dependencies": {
     "eslint": "^10.14.0",
