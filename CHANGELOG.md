@@ -1,16 +1,13 @@
 # Changelog
 
-## Unreleased
+## 0.1.1
 
-- New `server/` ProjectLens API: register GitHub/GitLab repositories, run remote scans, get overviews, findings, reports, trends and AI insights over REST (Next.js on Vercel + Supabase).
-- Opening the ProjectLens sidebar now opens the dashboard (`projectlens.openDashboardOnSidebarOpen`).
-- AI providers: OpenAI, Google Gemini and Anthropic Claude alongside Groq, each with its own SecretStorage key and model setting.
-- New commands: Select AI Provider, Set/Remove AI API Key, Test AI Connection, Select AI Model. The old Groq command IDs still work.
-- Provider SDKs are loaded lazily and the extension bundle is minified.
+- Clicking the ProjectLens icon in the Activity Bar now opens the dashboard as well as the sidebar. Turn this off with `projectlens.openDashboardOnSidebarOpen`.
+- Internal: build tweaks so the shared analysis engine can also power the ProjectLens API (no behavior change in the extension).
 
 ## 0.1.0
 
-Initial MVP:
+Initial release:
 
 - Activity Bar sidebar and full-tab React dashboard: Overview, Technologies, Progress, Code Quality, Security, AI Insights and Reports.
 - Workspace scanner with Quick and Full modes, multi-root support, `.gitignore` handling, cancellation and a per-file cache.
@@ -19,5 +16,7 @@ Initial MVP:
 - Security rules covering secrets, environment variables, injection, XSS, authentication tokens, CORS/TLS, logging, authorization, configuration and dependencies, plus an optional Gitleaks adapter.
 - Evidence-based progress estimation, with optional `.projectlens.json` requirements.
 - Transparent, check-based scoring and deterministic recommended actions.
-- Groq Cloud integration: SecretStorage credentials, consent previews, redaction, structured output with Zod validation, retries, rate-limit handling and session limits.
+- AI safety: SecretStorage credentials, consent previews, redaction, structured output with Zod validation, retries, rate-limit handling and session limits.
 - JSON and Markdown reports, scan history, and diagnostics in the Problems panel.
+- AI review with Groq, OpenAI, Google Gemini or Anthropic Claude, each with its own SecretStorage key and model setting; commands to select the provider and model and to set, test or remove keys.
+- Provider SDKs are loaded lazily and the extension bundle is minified.
