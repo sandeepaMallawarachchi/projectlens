@@ -7,6 +7,7 @@ src/**
 webview/**
 tests/**
 scripts/**
+server/**
 coverage/**
 dist/test/**
 dist/**/*.map

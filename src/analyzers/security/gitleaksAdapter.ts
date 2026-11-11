@@ -54,7 +54,8 @@ export async function resolveGitleaks(configuredPath: string): Promise<string | 
       continue;
     }
     for (const name of names) {
-      const candidate = path.join(dir, name);
+      // turbopackIgnore: PATH lookup is dynamic by design (never used by the API server).
+      const candidate = path.join(/*turbopackIgnore: true*/ dir, name);
       if (await isExecutable(candidate)) {
         return candidate;
       }

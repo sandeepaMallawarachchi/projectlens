@@ -3,10 +3,10 @@ import reactHooks from 'eslint-plugin-react-hooks';
 import globals from 'globals';
 
 export default tseslint.config(
-  { ignores: ['dist/**', 'node_modules/**', 'tests/fixtures/**', '.vscode-test/**', '*.vsix'] },
+  { ignores: ['dist/**', 'node_modules/**', 'tests/fixtures/**', '.vscode-test/**', '*.vsix', 'server/.next/**', 'server/engine/**', 'server/node_modules/**', 'server/next-env.d.ts'] },
   ...tseslint.configs.recommended,
   {
-    files: ['src/**/*.ts', 'tests/**/*.ts', 'scripts/**/*.mjs'],
+    files: ['src/**/*.ts', 'tests/**/*.ts', 'scripts/**/*.mjs', 'server/**/*.{ts,tsx,mjs}'],
     languageOptions: { globals: { ...globals.node } }
   },
   {

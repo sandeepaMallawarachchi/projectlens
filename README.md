@@ -68,6 +68,10 @@ npx vsce login SandeepaMallawarachchi   # once; paste an Azure DevOps token with
 npx vsce publish patch                  # bumps the version, builds, and publishes
 ```
 
+## ProjectLens API (remote analysis)
+
+`server/` contains a REST API that runs the same engine on GitHub and GitLab repositories. Other systems, such as a project-management tool, can use it to show project health, progress, risks and AI insights, and to trigger scans remotely. It deploys to Vercel with Supabase. See [server/README.md](server/README.md).
+
 ## Commands
 
 | Command | Description |
