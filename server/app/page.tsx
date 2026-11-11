@@ -173,6 +173,11 @@ ProjectLens analyzes GitHub/GitLab projects and reports code quality, security, 
 - Responses are JSON wrapped as { "data": … }. Errors: { "error": { "code", "message", "details" } } with the HTTP status.
 - Full OpenAPI 3.1 spec: ${base}/openapi.json
 
+## Getting the API key (important)
+- ProjectLens API keys are created ONLY in the "ProjectLens AI" VS Code extension: ProjectLens dashboard → Cloud → sign in → API keys → Create key (scopes read, scan, ai). Only organization owners/admins can create keys. The key is shown once.
+- There is NO web console or website page for creating keys. Do not invent one, and do not tell the user to look for "API Keys" in organization settings on a website.
+- Ask the user to add the key as a server-side secret named PROJECTLENS_API_KEY (and PROJECTLENS_API_URL=${base}) using this platform's secret/environment mechanism. Never ask them to paste the key into chat or into frontend/public environment variables.
+
 ## Key concepts
 - Project = one repository. Register projects with externalId = this app's project id, then address them as /projects/ext:<id> (no ProjectLens ids to store).
 - Scan = one analysis (status: queued → running → completed | failed). Completed scans have an "overview".
@@ -374,7 +379,7 @@ export async function POST(req: Request) {
                 <li>
                   <h3>Create an API key</h3>
                   <p>
-                    In <strong>Cloud → API keys</strong>, create a key with <code>read</code>, <code>scan</code> and <code>ai</code>. It is shown once - store it in your tool’s
+                    In VS Code, open the ProjectLens dashboard → <strong>Cloud → API keys</strong> (owners and admins only) and create a key with <code>read</code>, <code>scan</code> and <code>ai</code>. It is shown once - store it in your tool’s
                     server environment as <code>PROJECTLENS_API_KEY</code>.
                   </p>
                 </li>
