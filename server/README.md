@@ -43,6 +43,12 @@ PM tool / scripts ──API key (plk_…)──▶          │
    - **Server AI keys** (`GROQ_API_KEY`, …) are only used when `ALLOW_SERVER_AI_KEYS=true`. By default, organizations bring their own keys.
 4. **Deploy**, then check `GET /api/v1/health`. It should show `"storage":"supabase"` and which sign-in methods are enabled.
 
+## File size limits
+
+Cloud scans download and analyze eligible source files up to **10 MB each** by default (`MAX_FILE_KB=10240`). The archive and extracted-source total remain limited to 200 MB (`MAX_REPO_MB=200`). The VS Code extension uses the same default through `projectlens.scan.maxFileSizeKb`. Explicit server or VS Code settings override these defaults.
+
+For an existing Vercel deployment, raise any existing `MAX_FILE_KB=512` override to `10240` (or remove it to use the default), then redeploy. Run Analyze again: completed reports that skipped files under a smaller limit are regenerated instead of returned from the commit cache. Rate limits and quotas still apply. Generated folders and binary files remain excluded from source analysis.
+
 ## Getting started (for users)
 
 1. In VS Code, install **ProjectLens AI** and open **ProjectLens → Cloud**.

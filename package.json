@@ -290,7 +290,7 @@
         },
         "projectlens.scan.maxFileSizeKb": {
           "type": "number",
-          "default": 512,
+          "default": 10240,
           "minimum": 16,
           "description": "Files larger than this are skipped."
         },

@@ -252,6 +252,24 @@ describe('GitHub and GitLab repositories (mocked HTTP)', () => {
     expect(f.data[0].url).toMatch(new RegExp(`^https://git\\.example\\.com/team/apps/saas/-/blob/${SHA}/`));
   });
 
+  it('regenerates an unchanged commit when a previous report skipped files under a smaller limit', async () => {
+    const calls: string[] = [];
+    setFetcher(githubFetcher(await fixtureTarball('vulnerable-app'), calls));
+    const created = await projects.POST(r('POST', '/api/v1/projects', { name: 'Web', provider: 'github', repository: 'acme/web', accessToken: 'ghp_test_token' }));
+    const id = (await body<{ data: { id: string } }>(created)).data.id;
+    const first = await scanNow(id);
+    expect(first.json.data.status).toBe('completed');
+    const previous = store.scans.get(first.json.data.id)!;
+    // Simulate a persisted report produced by the old 512 KB deployment.
+    previous.summary!.warnings.push('10 file(s) larger than 512 KB were not downloaded.');
+    previous.createdAt = new Date(Date.now() - 120000).toISOString();
+    const regenerated = await scanNow(id);
+    expect(regenerated.json.cached).toBe(false);
+    expect(regenerated.json.data.id).not.toBe(first.json.data.id);
+    expect(regenerated.json.data.status).toBe('completed');
+    expect(calls.filter((call) => call.includes('/tarball/'))).toHaveLength(2);
+  });
+
   it('marks scans of oversized repositories as failed', async () => {
     await setup({ MAX_REPO_MB: '0.002' });
     setFetcher(githubFetcher(await fixtureTarball('vulnerable-app')));

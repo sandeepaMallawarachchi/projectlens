@@ -49,7 +49,11 @@ export async function startScan(project: ProjectRecord, opts: StartScanOptions):
   const resolved = await source.resolve(opts.ref ?? project.ref);
 
   // Same commit and mode already analyzed: reuse it (no download, no compute).
-  const sameCommit = recent.find((s) => s.source === 'cloud' && s.status === 'completed' && s.commitSha === resolved.sha && s.mode === opts.mode && resolved.sha !== 'local');
+  const sameCommit = recent.find((s) => s.source === 'cloud' && s.status === 'completed' && s.commitSha === resolved.sha && s.mode === opts.mode && resolved.sha !== 'local' && !s.summary?.warnings.some((warning) => {
+    // Re-analyze reports that skipped files under a smaller download limit.
+    const skipped = /file\(s\) larger than (\d+) KB were not downloaded/.exec(warning);
+    return skipped !== null && Number(skipped[1]) * 1024 < e.maxFileBytes;
+  }));
   if (sameCommit && !opts.force) {
     return { scan: sameCommit, cached: true };
   }

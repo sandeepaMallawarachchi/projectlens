@@ -16,7 +16,7 @@ export function env() {
     encryptionKey: process.env.PROJECTLENS_ENCRYPTION_KEY ?? '',
     webhookSecret: process.env.PROJECTLENS_WEBHOOK_SECRET ?? '',
     maxRepoBytes: num('MAX_REPO_MB', 200) * 1024 * 1024,
-    maxFileBytes: num('MAX_FILE_KB', 512) * 1024,
+    maxFileBytes: num('MAX_FILE_KB', 10240) * 1024,
     maxFiles: num('MAX_FILES', 8000),
     scanMinIntervalMs: num('SCAN_MIN_INTERVAL_SECONDS', 60) * 1000,
     scanHistoryLimit: num('SCAN_HISTORY_LIMIT', 30),

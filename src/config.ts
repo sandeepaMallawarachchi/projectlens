@@ -29,7 +29,7 @@ export function getConfig() {
       maxRequestsPerSession: c.get<number>('ai.maxRequestsPerSession', 40)
     },
     scan: {
-      maxFileSizeBytes: c.get<number>('scan.maxFileSizeKb', 512) * 1024,
+      maxFileSizeBytes: c.get<number>('scan.maxFileSizeKb', 10240) * 1024,
       maxFiles: c.get<number>('scan.maxFiles', 8000),
       respectGitignore: c.get<boolean>('scan.respectGitignore', true),
       exclude: c.get<string[]>('scan.exclude', [])
