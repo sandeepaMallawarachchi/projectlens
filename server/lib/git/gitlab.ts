@@ -19,6 +19,9 @@ export class GitLabSource implements RepoSource {
   private async request(path: string): Promise<Response> {
     const res = await this.fetcher(`${this.base}/api/v4${path}`, {
       headers: { 'user-agent': 'projectlens-api', ...(this.token ? { 'private-token': this.token } : {}) },
+      // Node fetch defaults to Sec-Fetch-Mode: cors, which GitLab's archive
+      // hotlink protection rejects with HTTP 406 even for valid tokens.
+      mode: 'same-origin',
       redirect: 'follow'
     });
     if (!res.ok) {
