@@ -58,15 +58,21 @@ This downloads a VS Code build into `.vscode-test/` on first run, opens `tests/f
 
 ```bash
 npm run package      # runs vsce package (vscode:prepublish builds first)
-code --install-extension projectlens-0.1.0.vsix
+code --install-extension projectlens-0.2.1.vsix
 ```
 
-To publish a new version to the Visual Studio Marketplace (publisher `SandeepaMallawarachchi`):
+The package version, lockfile version, and changelog must be updated before building a release. Version 0.2.1 produces `projectlens-0.2.1.vsix` for publisher `SandeepaMallawarachchi`.
+
+To upload the prepared package, open [Manage Publisher](https://marketplace.visualstudio.com/manage/publishers/SandeepaMallawarachchi), select the existing **ProjectLens AI** extension, choose its update/upload action, and upload `projectlens-0.2.1.vsix`.
+
+Alternatively, publish the exact prepared package from the CLI:
 
 ```bash
-npx vsce login SandeepaMallawarachchi   # once; paste an Azure DevOps token with Marketplace → Manage scope
-npx vsce publish patch                  # bumps the version, builds, and publishes
+npx vsce login SandeepaMallawarachchi   # once; enter a token with Marketplace → Manage scope
+npx vsce publish --packagePath projectlens-0.2.1.vsix
 ```
+
+Publishing the VSIX updates local extension behavior. Cloud API changes require deploying the `server` app separately; see [server setup](server/README.md).
 
 ## ProjectLens Cloud
 

@@ -2,7 +2,7 @@
   "name": "projectlens",
   "displayName": "ProjectLens AI",
   "description": "Analyze your workspace for technologies, code quality, security risks, implementation progress and production readiness \u2014 with optional AI review via Groq, OpenAI, Gemini or Claude.",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "publisher": "SandeepaMallawarachchi",
   "author": {
     "name": "Sandeepa Mallawarachchi"
@@ -292,7 +292,7 @@
           "type": "number",
           "default": 10240,
           "minimum": 16,
-          "description": "Files larger than this are skipped."
+          "description": "Maximum file size in KB for local source analysis (default: 10240 KB / 10 MB). Files larger than this are skipped."
         },
         "projectlens.scan.maxFiles": {
           "type": "number",

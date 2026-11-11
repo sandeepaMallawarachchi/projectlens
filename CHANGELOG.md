@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.1
+
+- Increased the default file size limit for local scans from 512 KB to 10 MB. Existing custom `projectlens.scan.maxFileSizeKb` values are preserved.
+- Clarified the file size setting's units and default in VS Code Settings.
+- **Cloud API (requires a separate backend deployment):** fixed GitLab archive downloads failing with HTTP 406 due to Node fetch metadata headers.
+- **Cloud API:** increased the default download and analysis limit to 10 MB per file while preserving the 200 MB repository limit. `MAX_FILE_KB` still overrides the default.
+- **Cloud API:** Analyze regenerates cached reports that skipped files under a smaller per-file download limit.
+
 ## 0.2.0
 
 - **ProjectLens Cloud** page in the dashboard:
