@@ -68,9 +68,26 @@ npx vsce login SandeepaMallawarachchi   # once; paste an Azure DevOps token with
 npx vsce publish patch                  # bumps the version, builds, and publishes
 ```
 
-## ProjectLens API (remote analysis)
+## ProjectLens Cloud
 
-`server/` contains a REST API that runs the same engine on GitHub and GitLab repositories. Other systems, such as a project-management tool, can use it to show project health, progress, risks and AI insights, and to trigger scans remotely. It deploys to Vercel with Supabase. See [server/README.md](server/README.md).
+The **Cloud** page in the dashboard connects the extension to ProjectLens Cloud, a hosted API. It's free for now, and local analysis never requires an account. From that page you can:
+- **Sign in** with GitHub (VS Code's built-in GitHub sign-in) or a 6-digit email code. The session token is kept in SecretStorage.
+- **Organizations:** switch between them, create new ones, invite teammates by email, and manage roles (owner, admin or member).
+- **Link this workspace** to a cloud project, created from the Git remote or picked from existing projects. Then:
+  - **Upload latest scan:** shows a consent prompt first. The upload contains no source code, local paths are removed, and evidence is redacted. You can also turn on automatic upload after each scan (`projectlens.cloud.autoUpload`).
+  - **Run cloud scan:** the server downloads the repository. Private repositories need a read-only repository token.
+- **API keys** for your PM tool or other integrations. Each new key is shown once, in a VS Code dialog with a Copy button, never in the webview.
+- **Cloud AI keys:** the organization's own Groq, OpenAI, Gemini or Claude key, encrypted on the server and used when integrations request AI insights. These are separate from your local AI keys.
+- **Usage** against the free-plan limits.
+
+The API's source and deployment guide are in [`server/`](server/README.md). Commands:
+- `ProjectLens: Open ProjectLens Cloud`
+- `ProjectLens: Sign In to ProjectLens Cloud` / `Sign Out of ProjectLens Cloud`
+- `ProjectLens: Link Workspace to Cloud Project`
+- `ProjectLens: Upload Latest Scan to Cloud`
+- `ProjectLens: Run Cloud Scan`
+
+Settings: `projectlens.cloud.apiUrl` (default `https://projectlensai.vercel.app/api/v1`) and `projectlens.cloud.autoUpload`.
 
 ## Commands
 

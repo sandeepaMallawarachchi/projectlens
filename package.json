@@ -2,7 +2,7 @@
   "name": "projectlens",
   "displayName": "ProjectLens AI",
   "description": "Analyze your workspace for technologies, code quality, security risks, implementation progress and production readiness \u2014 with optional AI review via Groq, OpenAI, Gemini or Claude.",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "publisher": "SandeepaMallawarachchi",
   "author": {
     "name": "Sandeepa Mallawarachchi"
@@ -152,6 +152,36 @@
       {
         "command": "projectlens.createRequirementsFile",
         "title": "Create .projectlens.json Requirements File",
+        "category": "ProjectLens"
+      },
+      {
+        "command": "projectlens.cloudOpen",
+        "title": "Open ProjectLens Cloud",
+        "category": "ProjectLens"
+      },
+      {
+        "command": "projectlens.cloudSignIn",
+        "title": "Sign In to ProjectLens Cloud",
+        "category": "ProjectLens"
+      },
+      {
+        "command": "projectlens.cloudSignOut",
+        "title": "Sign Out of ProjectLens Cloud",
+        "category": "ProjectLens"
+      },
+      {
+        "command": "projectlens.cloudLinkWorkspace",
+        "title": "Link Workspace to Cloud Project",
+        "category": "ProjectLens"
+      },
+      {
+        "command": "projectlens.cloudUpload",
+        "title": "Upload Latest Scan to Cloud",
+        "category": "ProjectLens"
+      },
+      {
+        "command": "projectlens.cloudScan",
+        "title": "Run Cloud Scan",
         "category": "ProjectLens"
       }
     ],
@@ -321,6 +351,17 @@
           "minimum": 1,
           "maximum": 200,
           "description": "Number of scan summaries retained in local history."
+        },
+        "projectlens.cloud.apiUrl": {
+          "type": "string",
+          "default": "https://projectlensai.vercel.app/api/v1",
+          "description": "ProjectLens Cloud API base URL.",
+          "scope": "application"
+        },
+        "projectlens.cloud.autoUpload": {
+          "type": "boolean",
+          "default": false,
+          "description": "After each local scan, upload the results to the linked ProjectLens Cloud project (no source code is uploaded)."
         }
       }
     }

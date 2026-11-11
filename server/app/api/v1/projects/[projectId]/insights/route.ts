@@ -10,8 +10,8 @@ export const OPTIONS = preflight;
 
 /** AI insights generated for this project, newest first. */
 export const GET = handle(async (req: Request, { params }: Params<'projectId'>) => {
-  await authenticate(req, 'read');
-  const project = await resolveProject((await params).projectId);
-  const insights = await getStore().listInsights({ projectId: project.id, limit: intParam(new URL(req.url), 'limit', 20, 100) });
+  const principal = await authenticate(req, 'read');
+  const project = await resolveProject(principal.orgId, (await params).projectId);
+  const insights = await getStore().listInsights(principal.orgId, { projectId: project.id, limit: intParam(new URL(req.url), 'limit', 20, 100) });
   return json({ data: insights });
 });

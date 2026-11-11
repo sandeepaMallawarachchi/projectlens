@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { AI_PROVIDER_IDS, AI_TASKS } from './ai';
 import type { AIState } from './ai';
+import type { CloudState } from './cloud';
 import type { ScanHistoryEntry, ScanMode, ScanResult } from './types';
 
 /** Messages sent from the webview to the extension host. Every message is validated. */
@@ -36,7 +37,29 @@ export const webviewMessageSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('export'), format: z.enum(['json', 'markdown']) }),
   z.object({ type: z.literal('clearHistory') }),
   z.object({ type: z.literal('createRequirements') }),
-  z.object({ type: z.literal('refresh') })
+  z.object({ type: z.literal('refresh') }),
+  // ProjectLens Cloud. Sensitive input (keys, tokens, codes) is collected by VS Code prompts in the host, never in the webview.
+  z.object({ type: z.literal('cloudSignIn'), method: z.enum(['github', 'email']) }),
+  z.object({ type: z.literal('cloudSignOut') }),
+  z.object({ type: z.literal('cloudRefresh') }),
+  z.object({ type: z.literal('cloudSelectOrg'), orgId: z.string().uuid() }),
+  z.object({ type: z.literal('cloudCreateOrg') }),
+  z.object({ type: z.literal('cloudInvite') }),
+  z.object({ type: z.literal('cloudChangeRole'), userId: z.string().uuid(), role: z.enum(['owner', 'admin', 'member']) }),
+  z.object({ type: z.literal('cloudRemoveMember'), userId: z.string().uuid() }),
+  z.object({ type: z.literal('cloudRevokeInvite'), invitationId: z.string().uuid() }),
+  z.object({ type: z.literal('cloudCreateKey') }),
+  z.object({ type: z.literal('cloudRevokeKey'), keyId: z.string().uuid() }),
+  z.object({ type: z.literal('cloudSetAiKey'), provider: z.enum(AI_PROVIDER_IDS) }),
+  z.object({ type: z.literal('cloudRemoveAiKey'), provider: z.enum(AI_PROVIDER_IDS) }),
+  z.object({ type: z.literal('cloudSetAiDefault'), provider: z.enum(AI_PROVIDER_IDS) }),
+  z.object({ type: z.literal('cloudLink') }),
+  z.object({ type: z.literal('cloudUnlink') }),
+  z.object({ type: z.literal('cloudSetToken') }),
+  z.object({ type: z.literal('cloudScan'), projectId: z.string().uuid().optional() }),
+  z.object({ type: z.literal('cloudUpload') }),
+  z.object({ type: z.literal('cloudToggleAutoUpload'), enabled: z.boolean() }),
+  z.object({ type: z.literal('cloudOpenSettings') })
 ]);
 
 export type WebviewMessage = z.infer<typeof webviewMessageSchema>;
@@ -61,6 +84,7 @@ export interface AppState {
   result: ScanResult | null;
   history: ScanHistoryEntry[];
   ai: AIState;
+  cloud: CloudState;
   settings: { gitleaksEnabled: boolean; diagnosticsEnabled: boolean };
 }
 

@@ -34,6 +34,8 @@ export function env() {
       timeoutMs: num('AI_TIMEOUT_SECONDS', 120) * 1000,
       maxRetries: num('AI_MAX_RETRIES', 3)
     },
+    /** Allow server-level AI keys (env) as a fallback for organizations without their own key. Off by default. */
+    allowServerAiKeys: process.env.ALLOW_SERVER_AI_KEYS === 'true',
     /** Lets tests and local development scan a directory instead of a remote repository. */
     allowLocalRepos: process.env.ALLOW_LOCAL_REPOS === 'true'
   };

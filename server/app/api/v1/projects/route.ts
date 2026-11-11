@@ -9,25 +9,24 @@ import { preflight } from '@/lib/route-utils';
 export const dynamic = 'force-dynamic';
 export const OPTIONS = preflight;
 
-/** List projects with their latest scan overview. `?externalId=` filters by the caller's id. */
+/** Projects of the caller's organization with their latest scan overview. `?externalId=` filters by the caller's id. */
 export const GET = handle(async (req: Request) => {
-  await authenticate(req, 'read');
+  const principal = await authenticate(req, 'read');
   const store = getStore();
   const externalId = new URL(req.url).searchParams.get('externalId');
-  const projects = externalId ? [await store.findProjectByExternalId(externalId)].filter((p) => p !== null) : await store.listProjects();
+  const projects = externalId ? [await store.findProjectByExternalId(principal.orgId, externalId)].filter((p) => p !== null) : await store.listProjects(principal.orgId);
   const items = await Promise.all(
     projects.map(async (p) => {
-      const [latest] = await store.listScans(p.id, { limit: 1, withResult: false });
+      const [latest] = await store.listScans(principal.orgId, p.id, { limit: 1, withResult: false });
       return projectDto(p, latest ?? null);
     })
   );
   return json({ data: items });
 });
 
-/** Register a repository. The access token is encrypted at rest and never returned. */
+/** Register a project. Repository tokens are encrypted at rest and never returned. */
 export const POST = handle(async (req: Request) => {
-  await authenticate(req, 'scan');
-  const body = await readJson(req, createProjectSchema);
-  const project = await createProject(body);
+  const principal = await authenticate(req, 'scan');
+  const project = await createProject(principal, await readJson(req, createProjectSchema));
   return json({ data: projectDto(project, null) }, 201);
 });

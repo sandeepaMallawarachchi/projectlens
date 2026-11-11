@@ -8,6 +8,8 @@ import { AI_PROVIDERS, type AIInsight, type AIProviderId, type AITask } from '@/
 import type { ScanResult } from '@/engine/models/types';
 import { fileUri, isInside, uriToPath } from '@/engine/utils/paths';
 import { env } from './env';
+import { decryptSecret } from './crypto';
+import { assertQuota } from './quotas';
 import { HttpError } from './http';
 import { getStore, type InsightRecord, type ProjectRecord, type ScanRecord } from './store';
 import { sourceFor } from './git';
@@ -44,17 +46,23 @@ export async function runInsight(project: ProjectRecord, scan: ScanRecord, req: 
   if (scan.status !== 'completed' || !scan.result) {
     throw new HttpError(409, 'scan_not_completed', 'AI insights require a completed scan');
   }
-  const providerId = req.provider ?? e.ai.provider;
-  const apiKey = e.ai.keys[providerId];
+  const store = getStore();
+  const org = await store.getOrg(project.orgId);
+  const orgKeys = await store.listOrgAiKeys(project.orgId);
+  // Provider: explicit request, the organization's default, or the only configured key.
+  const providerId = req.provider ?? org?.aiProvider ?? orgKeys[0]?.provider ?? e.ai.provider;
+  const orgKey = orgKeys.find((k) => k.provider === providerId);
+  // Organizations bring their own keys; server keys are used only when explicitly allowed.
+  const apiKey = orgKey ? decryptSecret(orgKey.keyEncrypted) : e.allowServerAiKeys ? e.ai.keys[providerId] : undefined;
   if (!apiKey) {
-    throw new HttpError(400, 'ai_not_configured', `No API key configured on the server for ${AI_PROVIDERS[providerId].label}. Set ${providerId.toUpperCase()}_API_KEY.`);
+    throw new HttpError(400, 'ai_not_configured', `No ${AI_PROVIDERS[providerId].label} API key is set for this organization. Add one in VS Code: ProjectLens → Cloud → AI keys.`);
   }
   if (req.task === 'reviewFile' && !req.file) {
     throw new HttpError(400, 'invalid_request', '"file" is required for reviewFile');
   }
 
-  const store = getStore();
-  const [latest] = await store.listInsights({ projectId: project.id, limit: 1 });
+  await assertQuota(project.orgId, 'ai');
+  const [latest] = await store.listInsights(project.orgId, { projectId: project.id, limit: 1 });
   if (latest && Date.now() - new Date(latest.createdAt).getTime() < AI_MIN_INTERVAL_MS()) {
     throw new HttpError(429, 'rate_limited', 'AI requests for this project are rate limited; retry shortly');
   }
@@ -72,7 +80,7 @@ export async function runInsight(project: ProjectRecord, scan: ScanRecord, req: 
     const provider = providerFactory
       ? providerFactory(providerId, apiKey)
       : createProvider(providerId, { getApiKey: async () => apiKey, timeoutMs: () => e.ai.timeoutMs, maxRetries: () => e.ai.maxRetries });
-    const model = req.model ?? (providerId === e.ai.provider ? e.ai.model : AI_PROVIDERS[providerId].defaultModel);
+    const model = req.model ?? (org?.aiProvider === providerId && org.aiModel ? org.aiModel : !orgKey && providerId === e.ai.provider ? e.ai.model : AI_PROVIDERS[providerId].defaultModel);
     const service = new AIService({
       provider: () => provider,
       settings: () => ({ model, maxContextTokens: e.ai.maxContextTokens, maxOutputTokens: e.ai.maxOutputTokens, maxRequestsPerSession: Number.MAX_SAFE_INTEGER, maxConcurrentRequests: 2 }),
@@ -118,7 +126,7 @@ export async function runInsight(project: ProjectRecord, scan: ScanRecord, req: 
     for (const path of Object.keys(insight.fileUris)) {
       fileUris[path] = source.webUrl(scan.commitSha!, path) ?? '';
     }
-    return await store.addInsight({ ...insight, fileUris, projectId: project.id, scanId: scan.id });
+    return await store.addInsight({ ...insight, fileUris, orgId: project.orgId, projectId: project.id, scanId: scan.id });
   } finally {
     await cleanup?.().catch(() => undefined);
   }
@@ -148,4 +156,18 @@ function toLocalResult(result: ScanResult, dir: string): ScanResult {
   visit(copy);
   copy.roots = copy.roots.map((r) => ({ ...r, uri: fileUri(dir) }));
   return copy;
+}
+
+/** Checks an AI provider key by listing models (no tokens are spent). */
+export async function validateProviderKey(providerId: AIProviderId, apiKey: string): Promise<void> {
+  const provider = providerFactory
+    ? providerFactory(providerId, apiKey)
+    : createProvider(providerId, { getApiKey: async () => apiKey, timeoutMs: () => 20_000, maxRetries: () => 1 });
+  try {
+    await provider.listModels();
+  } catch (err) {
+    const label = AI_PROVIDERS[providerId].label;
+    const message = err instanceof AIError ? describeAIError(err, label) : `Could not verify the ${label} key`;
+    throw new HttpError(400, 'invalid_ai_key', message);
+  }
 }

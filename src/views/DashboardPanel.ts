@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import type { ProjectLensController } from '../controller';
 import { renderWebviewHtml, webviewOptions } from './webviewHtml';
 
-const TABS = new Set(['overview', 'technologies', 'progress', 'quality', 'security', 'ai', 'reports']);
+const TABS = new Set(['overview', 'technologies', 'progress', 'quality', 'security', 'ai', 'cloud', 'reports']);
 
 /** Full editor-tab dashboard (single instance). */
 export class DashboardPanel {

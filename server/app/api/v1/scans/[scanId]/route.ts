@@ -9,8 +9,8 @@ export const OPTIONS = preflight;
 
 /** Scan status and, when completed, overview, score explanations and module reasoning. */
 export const GET = handle(async (req: Request, { params }: Params<'scanId'>) => {
-  await authenticate(req, 'read');
-  const scan = await getStore().getScan((await params).scanId);
+  const principal = await authenticate(req, 'read');
+  const scan = await getStore().getScan(principal.orgId, (await params).scanId);
   if (!scan) {
     throw notFound('Scan');
   }

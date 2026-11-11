@@ -40,7 +40,24 @@ export async function activate(context: vscode.ExtensionContext): Promise<{ cont
     vscode.commands.registerCommand('projectlens.exportJson', () => c.exportReport('json')),
     vscode.commands.registerCommand('projectlens.exportMarkdown', () => c.exportReport('markdown')),
     vscode.commands.registerCommand('projectlens.clearScanHistory', () => c.clearHistory()),
-    vscode.commands.registerCommand('projectlens.createRequirementsFile', () => c.createRequirementsFile())
+    vscode.commands.registerCommand('projectlens.createRequirementsFile', () => c.createRequirementsFile()),
+    vscode.commands.registerCommand('projectlens.cloudSignIn', async () => {
+      const pick = await vscode.window.showQuickPick(
+        [
+          { label: 'Sign in with GitHub', method: 'github' as const },
+          { label: 'Sign in with email', method: 'email' as const }
+        ],
+        { title: 'ProjectLens Cloud' }
+      );
+      if (pick) {
+        await c.cloud.signIn(pick.method);
+      }
+    }),
+    vscode.commands.registerCommand('projectlens.cloudSignOut', () => c.cloud.signOut()),
+    vscode.commands.registerCommand('projectlens.cloudLinkWorkspace', () => c.cloud.linkWorkspace()),
+    vscode.commands.registerCommand('projectlens.cloudUpload', () => c.cloud.upload()),
+    vscode.commands.registerCommand('projectlens.cloudScan', () => c.cloud.cloudScan()),
+    vscode.commands.registerCommand('projectlens.cloudOpen', () => openDashboard('cloud'))
   );
 
   await c.init();

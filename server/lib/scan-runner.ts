@@ -8,6 +8,7 @@ import { sourceFor, type RepoSource } from './git';
 import { downloadSnapshot } from './git/snapshot';
 import { overviewDto, scanDto } from './dto';
 import { sendWebhook } from './webhook';
+import { assertQuota } from './quotas';
 
 export interface StartScanOptions {
   mode: ScanMode;
@@ -35,7 +36,10 @@ const STALE_RUNNING_MS = 15 * 60 * 1000;
 export async function startScan(project: ProjectRecord, opts: StartScanOptions): Promise<StartedScan> {
   const store = getStore();
   const e = env();
-  const recent = await store.listScans(project.id, { limit: 5, withResult: false });
+  if (project.provider === 'none') {
+    throw new HttpError(400, 'no_repository', 'This project has no repository connection. Upload scans from the VS Code extension, or set a GitHub/GitLab repository.');
+  }
+  const recent = await store.listScans(project.orgId, project.id, { limit: 5, withResult: false });
   const active = recent.find((s) => (s.status === 'running' || s.status === 'queued') && Date.now() - new Date(s.createdAt).getTime() < STALE_RUNNING_MS);
   if (active) {
     throw new HttpError(409, 'scan_in_progress', 'A scan is already running for this project', { scanId: active.id });
@@ -45,19 +49,22 @@ export async function startScan(project: ProjectRecord, opts: StartScanOptions):
   const resolved = await source.resolve(opts.ref ?? project.ref);
 
   // Same commit and mode already analyzed: reuse it (no download, no compute).
-  const sameCommit = recent.find((s) => s.status === 'completed' && s.commitSha === resolved.sha && s.mode === opts.mode && resolved.sha !== 'local');
+  const sameCommit = recent.find((s) => s.source === 'cloud' && s.status === 'completed' && s.commitSha === resolved.sha && s.mode === opts.mode && resolved.sha !== 'local');
   if (sameCommit && !opts.force) {
     return { scan: sameCommit, cached: true };
   }
 
-  const last = recent[0];
+  await assertQuota(project.orgId, 'cloudScan');
+  const last = recent.find((s) => s.source === 'cloud');
   if (last && Date.now() - new Date(last.createdAt).getTime() < e.scanMinIntervalMs) {
     const retryAfter = Math.ceil((e.scanMinIntervalMs - (Date.now() - new Date(last.createdAt).getTime())) / 1000);
     throw new HttpError(429, 'rate_limited', `Scans for this project are limited to one every ${Math.round(e.scanMinIntervalMs / 1000)} s`, { retryAfterSeconds: retryAfter });
   }
 
   const scan = await store.createScan({
+    orgId: project.orgId,
     projectId: project.id,
+    source: 'cloud',
     status: 'queued',
     mode: opts.mode,
     ref: resolved.ref,
@@ -105,7 +112,7 @@ async function executeScan(project: ProjectRecord, scan: ScanRecord, source: Rep
     raw.warnings = [...raw.warnings.filter((w) => !/not trusted/i.test(w)), ...extraWarnings];
     const result = toPublicResult(raw, dir, source, scan.commitSha!);
     current = await store.updateScan(scan.id, { status: 'completed', finishedAt: new Date().toISOString(), result, summary: overviewDto(result) });
-    await store.pruneScans(project.id, e.scanHistoryLimit);
+    await store.pruneScans(project.orgId, project.id, e.scanHistoryLimit);
   } catch (err) {
     const message = err instanceof HttpError ? err.message : err instanceof Error ? `Scan failed: ${err.message}` : 'Scan failed';
     console.error('[projectlens-api] scan failed', scan.id, err);

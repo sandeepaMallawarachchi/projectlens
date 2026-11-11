@@ -1,6 +1,6 @@
-# ProjectLens API
+# ProjectLens API (ProjectLens Cloud)
 
-ProjectLens API is a REST API for analyzing GitHub and GitLab repositories remotely. It runs the same analysis engine as the ProjectLens VS Code extension and reports:
+ProjectLens Cloud is a hosted, multi-tenant REST API that powers ProjectLens Cloud. It analyzes GitHub and GitLab repositories with the same engine as the ProjectLens VS Code extension, and stores scan results uploaded from the extension. Results cover:
 
 - technologies
 - code quality
@@ -8,185 +8,133 @@ ProjectLens API is a REST API for analyzing GitHub and GitLab repositories remot
 - implementation progress
 - production readiness
 
-It can also produce optional AI insights using a Groq, OpenAI, Gemini or Claude key kept on the server.
+It can also produce AI insights using each organization's own AI key.
 
-It is designed to be called from other systems, such as a project-management tool. Typical uses are listing projects with their health scores, triggering an analysis, showing trends, and opening findings directly at the right line on GitHub or GitLab.
+Users sign in from the VS Code extension (**ProjectLens → Cloud**) with GitHub or a 6-digit email code. Each user belongs to one or more **organizations** (teams). Projects, scans, API keys and AI keys belong to an organization, and organizations are fully isolated from each other. A project-management tool (or any other system) connects with an **organization API key** created in the extension.
 
 ```
-Your system ──HTTPS + API key──▶ ProjectLens API (Vercel) ──▶ GitHub / GitLab (download commit snapshot)
-                                        │
-                                        └──▶ Supabase Postgres (projects, scan results, insights)
+VS Code extension ──session (pls_…)──▶ ProjectLens Cloud API (Vercel) ──▶ GitHub / GitLab (commit snapshots)
+PM tool / scripts ──API key (plk_…)──▶          │
+                                                └──▶ Supabase Postgres (orgs, users, projects, scans, insights, keys)
 ```
 
-**How a scan works:**
-1. The API resolves the branch to a commit.
-2. It downloads that commit's tarball (no Git history) and extracts it to temporary storage.
-3. It runs the analysis and stores the results: scores, redacted findings and links.
-4. It deletes the files.
+## Who holds which secret
 
-No source code is stored. If the commit was already scanned, the stored result is returned without downloading anything.
-
-## Deploy (Vercel + Supabase)
-
-1. **Create the database.** Create a Supabase project, open **SQL Editor**, and run `supabase/schema.sql`. Then copy the project URL and the **service_role** key from **Project Settings → API**.
-2. **Create a Vercel project** from this repository:
-   - **Root Directory:** `server`
-   - Keep **"Include files outside the root directory in the Build Step"** enabled (the default). The build copies the shared engine from `../src`.
-   - The framework is detected as Next.js automatically.
-3. **Set environment variables** in Vercel (see `.env.example`):
-   - `PROJECTLENS_ADMIN_KEY`: a long random string (`openssl rand -base64 32`).
-   - `PROJECTLENS_ENCRYPTION_KEY`: generate with `openssl rand -base64 32`. Changing it later makes stored repository tokens unreadable.
-   - `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`.
-   - Optional: `AI_PROVIDER` plus that provider's key (`GROQ_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`, `ANTHROPIC_API_KEY`).
-   - Optional: `PROJECTLENS_WEBHOOK_SECRET` and `WEBHOOK_ALLOWED_HOSTS`.
-4. **Deploy**, then check `https://<your-api>.vercel.app/api/v1/health`.
-5. **Create a scoped key for your app** with the admin key:
-   ```bash
-   curl -X POST https://<your-api>.vercel.app/api/v1/keys \
-     -H "Authorization: Bearer $PROJECTLENS_ADMIN_KEY" -H "content-type: application/json" \
-     -d '{"name":"pm-tool","scopes":["read","scan","ai"]}'
-   ```
-   The response includes `key` (`plk_…`) **once**. Store it in your app's server environment.
-
-Scans and AI routes run for up to 300 s (`maxDuration`). Typical repositories finish in seconds.
-
-## Repository access tokens
-
-| Host | Token | Permissions |
+| Secret | Holder | Purpose |
 |---|---|---|
-| GitHub | Fine-grained personal access token or GitHub App token | **Contents: Read** on the repository |
-| GitLab | Project, group or personal access token | **read_repository** (add `read_api` for some self-hosted setups) |
+| `PROJECTLENS_ENCRYPTION_KEY`, `SUPABASE_SERVICE_ROLE_KEY` | **You (server only)** | Encryption at rest and database access. Never share. |
+| `PROJECTLENS_ADMIN_KEY` | **You (server only)** | Platform operations; requires `X-ProjectLens-Org`. Not for customers. |
+| `RESEND_API_KEY` | **You (server only)** | Email sign-in codes and invitations (optional). |
+| Session token `pls_…` | Each user (stored in VS Code SecretStorage) | The extension's access to their organizations |
+| API key `plk_…` | Each organization (created in the extension) | Integrations such as a PM tool |
+| AI provider keys | Each organization (set in the extension) | Server-side AI insights for that organization, encrypted |
+| Repository tokens | Each project | Cloud scans of private repositories, encrypted |
 
-Public repositories need no token. Tokens are encrypted with AES-256-GCM, never returned by the API, and used only to call the GitHub or GitLab API.
+## Deploy or upgrade (Vercel + Supabase)
 
-## API
+1. **Database:**
+   - **New database:** run `supabase/schema.sql` in the Supabase SQL editor.
+   - **Existing v0.1 database** (single-tenant, from the first deployment): run `supabase/migrations/002_multitenant.sql` instead. Existing projects and keys move into an organization called "Legacy workspace".
+2. **Vercel project:** set **Root Directory** to `server` and keep "Include files outside the root directory" enabled.
+3. **Environment variables** (see `.env.example`):
+   - **Required:** `PROJECTLENS_ADMIN_KEY`, `PROJECTLENS_ENCRYPTION_KEY`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`.
+   - **Email sign-in:** `RESEND_API_KEY` and `EMAIL_FROM`, with a domain verified in Resend. Without them, only GitHub sign-in is offered.
+   - **Optional:** webhooks (`PROJECTLENS_WEBHOOK_SECRET`, `WEBHOOK_ALLOWED_HOSTS`) and free-plan limits (`FREE_MAX_*`).
+   - **Server AI keys** (`GROQ_API_KEY`, …) are only used when `ALLOW_SERVER_AI_KEYS=true`. By default, organizations bring their own keys.
+4. **Deploy**, then check `GET /api/v1/health`. It should show `"storage":"supabase"` and which sign-in methods are enabled.
 
-Base URL: `https://<your-api>/api/v1`. Every request except `/health` and `/openapi.json` needs `Authorization: Bearer <key>`. The full OpenAPI spec is at `/api/v1/openapi.json`.
+## Getting started (for users)
+
+1. In VS Code, install **ProjectLens AI** and open **ProjectLens → Cloud**.
+2. Sign in with GitHub or email. A personal organization is created on first sign-in.
+3. **Link this workspace:**
+   - This creates a cloud project from the Git remote, or links an existing project.
+   - Optionally add a read-only repository token so the server can run cloud scans.
+   - Then **Upload latest scan** or **Run cloud scan**.
+4. **Team:** invite teammates by email. They join automatically when they sign in with that email.
+5. **API keys:** create a key (scopes `read`, `scan`, `ai`) for the PM tool.
+6. **Cloud AI keys:** add the organization's Groq, OpenAI, Gemini or Claude key so integrations can request AI insights.
+
+## Authentication
+
+Send `Authorization: Bearer <token>` with one of:
+- **`plk_…` organization API key:** for integrations. It is scoped to its own organization only, with scopes `read`, `scan`, `ai` and `admin` (manage keys).
+- **`pls_…` user session:** from `POST /auth/github` or `POST /auth/email/verify`. Add `X-ProjectLens-Org: <orgId>` to choose the organization; the default is the user's first one.
+
+  | Role | Permissions |
+  |---|---|
+  | `member` | read, scan, ai |
+  | `admin`, `owner` | Also manage members, invitations, API keys and AI keys |
+  | `owner` | Also manage other owners |
+
+## API overview
+
+Base URL: `https://<your-api>/api/v1`. The full spec is at `/api/v1/openapi.json`.
+
+**Accounts** (no auth, or session):
+- `GET /auth/config`
+- `POST /auth/github`, `POST /auth/email/start`, `POST /auth/email/verify`, `POST /auth/logout`
+- `GET /me`
+
+**Organizations** (session):
+- `GET /orgs`, `POST /orgs`, `GET /orgs/{id}`, `PATCH /orgs/{id}`
+- `GET /orgs/{id}/members`, `PATCH /orgs/{id}/members/{userId}`, `DELETE /orgs/{id}/members/{userId}`
+- `GET /orgs/{id}/invitations`, `POST /orgs/{id}/invitations`, `DELETE /orgs/{id}/invitations/{invId}`
+- `GET /orgs/{id}/ai-keys`, `PUT /orgs/{id}/ai-keys/{provider}`, `DELETE /orgs/{id}/ai-keys/{provider}`, `PUT /orgs/{id}/ai-settings`
+- `GET /orgs/{id}/usage`
+
+**Organization resources** (API key or session):
 
 | Method & path | Scope | Purpose |
 |---|---|---|
-| `POST /projects` | scan | Register a repository: `name`, `provider` (`github` or `gitlab`), `repository` (URL or `owner/repo`), optional `ref`, `accessToken`, `baseUrl`, `externalId`, `metadata` |
-| `GET /projects` | read | All projects with their latest overview (`?externalId=` to filter) |
-| `GET /projects/{id}` | read | Overview, latest scan, and a score trend over the last 20 scans |
-| `PATCH /projects/{id}` | scan | Change `name`, `ref`, `accessToken` (`null` removes it), `externalId` or `metadata` |
-| `DELETE /projects/{id}` | admin | Delete the project and its history |
-| `POST /projects/{id}/scans` | scan | Trigger a scan. `{ "mode": "full", "wait": false, "force": false, "ref": "main", "callbackUrl": "https://…" }` |
-| `GET /projects/{id}/scans` | read | Scan history |
-| `GET /scans/{id}` | read | Status, overview, score explanations (checks and caps), modules |
-| `GET /scans/{id}/findings` | read | Findings, paginated. Filters: `severity` (minimum), `category`, `status`, `file`, `includeTests`, `limit`, `offset` |
+| `GET /projects` (`?externalId=`) | read | Projects with their latest overview |
+| `POST /projects` | scan | Register a project: `provider` is `github`, `gitlab` or `none` (uploads only); also `repository`, optional `accessToken`, `externalId`, `ref`, `baseUrl` |
+| `GET` / `PATCH` / `DELETE /projects/{id}` | read / scan / admin | `{id}` is a UUID or `ext:<externalId>`. The overview includes a score trend. |
+| `POST /projects/{id}/scans` | scan | Cloud scan: `202` (background), `200` (`wait: true` or `cached: true`), `409` (already running), `429` (rate limit or quota) |
+| `POST /projects/{id}/uploads` | scan | Upload a scan result from the extension (`{ result, commitSha?, branch? }`) |
+| `GET /projects/{id}/scans`, `GET /scans/{id}` | read | History; detail with score explanations and modules |
+| `GET /scans/{id}/findings` | read | Filters: `severity`, `category`, `status`, `file`, `includeTests`, `limit`, `offset` |
 | `GET /scans/{id}/report?format=markdown\|json` | read | Full report |
-| `POST /scans/{id}/insights` | ai | AI analysis: `{ "task": "projectAssessment" }` (also `architectureSummary`, `improvements`, `securityConcerns`, `incompletePatterns`, `explainFinding` + `findingId`, `reviewModule` + `moduleId`, `reviewFile` + `file`). Optional `provider` and `model` |
-| `GET /scans/{id}/insights`, `GET /projects/{id}/insights` | read | Stored AI insights |
-| `POST /keys`, `GET /keys`, `DELETE /keys/{id}` | admin | Manage API keys |
+| `POST /scans/{id}/insights` | ai | AI analysis using the organization's AI key (`ai_not_configured` if none is set) |
+| `GET /usage` | read | Usage and plan limits |
+| `GET` / `POST /keys`, `DELETE /keys/{id}` | admin | Organization API keys |
 
-**Using your own project IDs:** `{id}` can be the ProjectLens UUID or `ext:<externalId>`. If you register projects with your tool's ID as `externalId`, you never need to store ProjectLens IDs.
+**Errors:** `{ "error": { "code", "message", "details"? } }`.
 
-**Scan responses:**
+**Free-plan limits** (per organization; `quota_exceeded` when reached): 25 projects; per 24 h, 100 cloud scans, 200 uploads and 50 AI insights.
 
-| Status | Meaning |
-|---|---|
-| `202` | Accepted; the scan runs in the background. Poll `GET /scans/{id}` or use `callbackUrl`. |
-| `200` | Finished (`wait: true`), or `cached: true` when the commit was already scanned. |
-| `409` | A scan is already running for this project. |
-| `429` | Rate limited (`SCAN_MIN_INTERVAL_SECONDS`, default 60 s). |
+## Uploads from the extension
 
-**Errors** always have the shape `{ "error": { "code": "…", "message": "…", "details": … } }`.
+The extension uploads its local scan result (no source code). The server then:
+1. Removes every local `file://` path, replacing it with a repository link at the uploaded commit when the project has a GitHub or GitLab repository.
+2. Re-applies secret redaction to evidence.
+3. Strips local paths from warnings.
+4. Stores the result as a scan with `source: "upload"`.
 
-### Webhooks
+## Webhooks
 
-Pass `callbackUrl` (HTTPS) when triggering a scan to receive `scan.completed` or `scan.failed`:
-
-```http
-POST <callbackUrl>
-X-ProjectLens-Event: scan.completed
-X-ProjectLens-Signature: sha256=<HMAC-SHA256 of the raw body with PROJECTLENS_WEBHOOK_SECRET>
-
-{ "event": "scan.completed", "sentAt": "…", "data": { "projectId": "…", "externalId": "pm-42", "scan": { …overview… } } }
-```
-
-Verify the signature before trusting the payload.
-
-## Example: integrating a project-management tool (Next.js / Node)
-
-Call the API **from your server** (API routes or server actions), never from the browser, so the key stays secret:
-
-```ts
-// lib/projectlens.ts (server-only)
-const BASE = process.env.PROJECTLENS_API_URL!; // https://<your-api>.vercel.app/api/v1
-const KEY = process.env.PROJECTLENS_API_KEY!;  // plk_… with read/scan/ai scopes
-
-async function pl<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, {
-    ...init,
-    headers: { authorization: `Bearer ${KEY}`, 'content-type': 'application/json', ...init.headers },
-    cache: 'no-store'
-  });
-  const body = await res.json();
-  if (!res.ok) throw new Error(body.error?.message ?? `ProjectLens ${res.status}`);
-  return body as T;
-}
-
-// Link a PM project to its repository (once).
-export const linkRepository = (pmProjectId: string, name: string, repoUrl: string, token?: string) =>
-  pl('/projects', {
-    method: 'POST',
-    body: JSON.stringify({
-      name,
-      provider: repoUrl.includes('gitlab') ? 'gitlab' : 'github',
-      repository: repoUrl,
-      accessToken: token,
-      externalId: pmProjectId
-    })
-  });
-
-// Overview for the PM dashboard: scores, progress, top risks, technologies, trend.
-export const getOverview = (pmProjectId: string) => pl<{ data: any }>(`/projects/ext:${pmProjectId}`);
-
-// "Analyze now" button. Returns quickly; the scan finishes in the background.
-export const analyze = (pmProjectId: string) =>
-  pl<{ data: { id: string; status: string }; cached: boolean }>(`/projects/ext:${pmProjectId}/scans`, {
-    method: 'POST',
-    body: JSON.stringify({ mode: 'full' })
-  });
-
-export const getScan = (scanId: string) => pl<{ data: any }>(`/scans/${scanId}`);
-export const getRisks = (scanId: string) => pl<{ data: any[] }>(`/scans/${scanId}/findings?severity=high&limit=20`);
-export const aiAssessment = (scanId: string) =>
-  pl<{ data: any }>(`/scans/${scanId}/insights`, { method: 'POST', body: JSON.stringify({ task: 'projectAssessment' }) });
-```
-
-**Useful fields for a PM view** (`GET /projects/ext:{id}` → `data.latestScan.overview`):
-
-| Field | Contents |
-|---|---|
-| `scores.{quality,security,implementation,readiness}.score` | 0–100, or `null` when not assessed |
-| `progress.estimate`, `progress.label`, `progress.modules[]` | Status and completion per module |
-| `findings.bySeverity`, `topRisks[]` | Each risk includes `url` to the line on GitHub/GitLab |
-| `technologies[]`, `recommendedActions[]` | Detected stack and suggested next steps |
-| `data.trend[]` | Score history for charts |
+Pass `callbackUrl` (HTTPS) when triggering a cloud scan. The server POSTs `scan.completed` or `scan.failed` with the header `X-ProjectLens-Signature: sha256=<HMAC of the raw body with PROJECTLENS_WEBHOOK_SECRET>`.
 
 ## Local development
 
 ```bash
 cd server
-cp .env.example .env.local    # fill PROJECTLENS_ADMIN_KEY and PROJECTLENS_ENCRYPTION_KEY
+cp .env.example .env.local     # set PROJECTLENS_ADMIN_KEY and PROJECTLENS_ENCRYPTION_KEY; add EMAIL_DEV_LOG=true
 npm install
-npm run dev                   # http://localhost:3000; uses in-memory storage without Supabase
-npm test                      # API tests with mocked GitHub/GitLab and AI providers
+npm run dev                    # in-memory storage without Supabase; sign-in codes are printed to the console
+npm test                       # 27 tests: multi-tenant auth, sign-in, teams, uploads, cloud scans (mocked GitHub/GitLab/AI)
 ```
 
-With `ALLOW_LOCAL_REPOS=true`, you can register `{ "provider": "local", "repository": "/abs/path" }` to scan a folder on your machine. Never enable this in production.
+To use a local server from the extension, set `projectlens.cloud.apiUrl` to `http://localhost:3000/api/v1`.
 
 ## Security notes
 
-- **Access control:** API keys are stored as SHA-256 hashes, and scopes are enforced per route. Supabase tables have RLS enabled with no public policies, so only the service-role key (server-only) can access them.
-- **Secret handling:** repository tokens are encrypted at rest. Finding evidence is redacted, and AI context goes through the same redaction and file exclusions as the extension. Gitleaks and repository scripts are never executed.
-- **Archive extraction:** archives are streamed with size limits. Symlinks, hard links and absolute or `..` paths are skipped.
-- **Outbound requests:** self-hosted GitLab URLs and webhook URLs must be HTTPS and are blocked for private or loopback hosts. Use `GITLAB_ALLOWED_HOSTS` and `WEBHOOK_ALLOWED_HOSTS` to allow-list hosts.
-- **AI requests:** calling the AI endpoint is the consent to send redacted excerpts to the configured provider.
-
-## Limitations
-
-- In-memory storage (when Supabase isn't configured) is per server instance and is lost on redeploys. Use Supabase in production.
-- Background scans use Next.js `after()`, which runs within the same function invocation (up to `maxDuration`). There is no separate queue. A scan interrupted by a platform timeout stays `running` for 15 minutes, after which a new scan is allowed.
-- Repositories larger than `MAX_REPO_MB` (default 200 MB of source) are rejected.
+- **Tenant isolation:** every tenant query includes the organization ID.
+- **Tokens and secrets:**
+  - API keys, session tokens and email codes are stored only as SHA-256 hashes.
+  - Repository and AI keys are encrypted with AES-256-GCM and never returned.
+  - GitHub sign-in tokens are verified with GitHub and never stored.
+- **Email sign-in:** codes expire after 10 minutes, are locked after 5 wrong attempts, and limited to 5 codes per email per hour.
+- **Database:** RLS is enabled on every table with no public policies, so only the server key can access data.
+- **Scanning:** repository code and Gitleaks are never executed. Archive extraction rejects links and path traversal.
+- **Outbound requests:** self-hosted GitLab and webhook URLs must be HTTPS and can't point to private hosts.

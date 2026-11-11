@@ -1,86 +1,52 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-import type { ApiKeyRecord, ApiScope, InsightRecord, ProjectRecord, ScanRecord, Store } from './types';
+import type { AIProviderId } from '@/engine/models/ai';
+import type {
+  ApiKeyRecord,
+  EmailCodeRecord,
+  InsightRecord,
+  InvitationRecord,
+  MembershipRecord,
+  OrgAiKeyRecord,
+  OrgRecord,
+  ProjectRecord,
+  Role,
+  ScanRecord,
+  ScanSource,
+  SessionRecord,
+  Store,
+  UserRecord
+} from './types';
 import { HttpError, notFound } from '../http';
 
-/* Row <-> record mapping (snake_case columns, see supabase/schema.sql). */
 type Row = Record<string, unknown>;
 
-const toProject = (r: Row): ProjectRecord => ({
-  id: r.id as string,
-  name: r.name as string,
-  provider: r.provider as ProjectRecord['provider'],
-  repository: r.repository as string,
-  baseUrl: (r.base_url as string) ?? null,
-  ref: (r.ref as string) ?? null,
-  tokenEncrypted: (r.token_encrypted as string) ?? null,
-  externalId: (r.external_id as string) ?? null,
-  metadata: (r.metadata as Record<string, unknown>) ?? {},
-  createdAt: r.created_at as string,
-  updatedAt: r.updated_at as string
-});
+const snake = (k: string) => k.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`);
+const camel = (k: string) => k.replace(/_([a-z0-9])/g, (_, c: string) => c.toUpperCase());
 
-const fromProject = (p: Partial<ProjectRecord>): Row => {
+/** Top-level key conversion only; JSON columns (metadata, summary, result, data, scopes) keep their contents. */
+function toRow(obj: object): Row {
   const row: Row = {};
-  const map: [keyof ProjectRecord, string][] = [
-    ['name', 'name'], ['provider', 'provider'], ['repository', 'repository'], ['baseUrl', 'base_url'], ['ref', 'ref'],
-    ['tokenEncrypted', 'token_encrypted'], ['externalId', 'external_id'], ['metadata', 'metadata']
-  ];
-  for (const [k, col] of map) {
-    if (k in p) {
-      row[col] = p[k];
+  for (const [k, v] of Object.entries(obj)) {
+    if (v !== undefined) {
+      row[snake(k)] = v;
     }
   }
   return row;
-};
+}
 
-const toScan = (r: Row): ScanRecord => ({
-  id: r.id as string,
-  projectId: r.project_id as string,
-  status: r.status as ScanRecord['status'],
-  mode: r.mode as ScanRecord['mode'],
-  ref: (r.ref as string) ?? null,
-  commitSha: (r.commit_sha as string) ?? null,
-  triggeredBy: (r.triggered_by as string) ?? null,
-  callbackUrl: (r.callback_url as string) ?? null,
-  createdAt: r.created_at as string,
-  startedAt: (r.started_at as string) ?? null,
-  finishedAt: (r.finished_at as string) ?? null,
-  error: (r.error as string) ?? null,
-  summary: (r.summary as ScanRecord['summary']) ?? null,
-  result: (r.result as ScanRecord['result']) ?? null
-});
-
-const fromScan = (s: Partial<ScanRecord>): Row => {
-  const row: Row = {};
-  const map: [keyof ScanRecord, string][] = [
-    ['projectId', 'project_id'], ['status', 'status'], ['mode', 'mode'], ['ref', 'ref'], ['commitSha', 'commit_sha'],
-    ['triggeredBy', 'triggered_by'], ['callbackUrl', 'callback_url'], ['startedAt', 'started_at'], ['finishedAt', 'finished_at'],
-    ['error', 'error'], ['summary', 'summary'], ['result', 'result']
-  ];
-  for (const [k, col] of map) {
-    if (k in s) {
-      row[col] = s[k];
-    }
+function fromRow<T>(row: Row): T {
+  const obj: Row = {};
+  for (const [k, v] of Object.entries(row)) {
+    obj[camel(k)] = v;
   }
-  return row;
-};
+  return obj as T;
+}
 
-const toKey = (r: Row): ApiKeyRecord => ({
-  id: r.id as string,
-  name: r.name as string,
-  prefix: r.prefix as string,
-  keyHash: r.key_hash as string,
-  scopes: (r.scopes as ApiScope[]) ?? [],
-  createdAt: r.created_at as string,
-  lastUsedAt: (r.last_used_at as string) ?? null,
-  revokedAt: (r.revoked_at as string) ?? null
-});
+const SCAN_LIST_COLUMNS = 'id, org_id, project_id, source, status, mode, ref, commit_sha, triggered_by, callback_url, created_at, started_at, finished_at, error, summary';
 
-const toInsight = (r: Row): InsightRecord => ({ ...(r.data as InsightRecord), projectId: r.project_id as string, scanId: r.scan_id as string });
+type Result<T> = { data: T; error: { message: string; code?: string } | null };
 
-const SCAN_LIST_COLUMNS = 'id, project_id, status, mode, ref, commit_sha, triggered_by, callback_url, created_at, started_at, finished_at, error, summary';
-
-/** Supabase Postgres store. Uses the service-role key server-side; tables have RLS enabled with no public policies. */
+/** Supabase Postgres store. Uses the service-role/secret key server-side; tables have RLS enabled with no public policies. */
 export class SupabaseStore implements Store {
   private readonly db: SupabaseClient;
 
@@ -88,7 +54,7 @@ export class SupabaseStore implements Store {
     this.db = createClient(url, serviceKey, { auth: { persistSession: false, autoRefreshToken: false } });
   }
 
-  private check<T>(res: { data: T; error: { message: string; code?: string } | null }): T {
+  private check<T>(res: Result<T>): T {
     if (res.error) {
       if (res.error.code === '23505') {
         throw new HttpError(409, 'conflict', 'A record with the same unique value already exists');
@@ -98,99 +64,233 @@ export class SupabaseStore implements Store {
     return res.data;
   }
 
-  private one(res: { data: Row | null; error: { message: string; code?: string } | null }): Row {
+  private one<T>(res: Result<Row | null>, what = 'Record'): T {
     const row = this.check(res);
     if (!row) {
-      throw new HttpError(500, 'storage_error', 'Insert returned no row');
+      throw notFound(what);
     }
-    return row;
+    return fromRow<T>(row);
   }
 
+  private maybe<T>(res: Result<Row | null>): T | null {
+    const row = this.check(res);
+    return row ? fromRow<T>(row) : null;
+  }
+
+  private many<T>(res: Result<Row[] | null>): T[] {
+    return (this.check(res) ?? []).map((r) => fromRow<T>(r));
+  }
+
+  private async count(query: PromiseLike<{ count: number | null; error: { message: string } | null }>): Promise<number> {
+    const res = await query;
+    if (res.error) {
+      throw new HttpError(500, 'storage_error', res.error.message);
+    }
+    return res.count ?? 0;
+  }
+
+  // Organizations, users, memberships
+  async createOrg(o: Omit<OrgRecord, 'id' | 'createdAt'>) {
+    return this.one<OrgRecord>(await this.db.from('organizations').insert(toRow(o)).select().single());
+  }
+  async getOrg(id: string) {
+    return this.maybe<OrgRecord>(await this.db.from('organizations').select().eq('id', id).maybeSingle());
+  }
+  async updateOrg(id: string, patch: Partial<OrgRecord>) {
+    return this.one<OrgRecord>(await this.db.from('organizations').update(toRow(patch)).eq('id', id).select().maybeSingle(), 'Organization');
+  }
+  async createUser(u: Omit<UserRecord, 'id' | 'createdAt'>) {
+    return this.one<UserRecord>(await this.db.from('users').insert(toRow(u)).select().single());
+  }
+  async getUser(id: string) {
+    return this.maybe<UserRecord>(await this.db.from('users').select().eq('id', id).maybeSingle());
+  }
+  async findUserByGithubId(githubId: string) {
+    return this.maybe<UserRecord>(await this.db.from('users').select().eq('github_id', githubId).maybeSingle());
+  }
+  async findUserByEmail(email: string) {
+    const rows = this.many<UserRecord>(await this.db.from('users').select().eq('email', email).order('created_at').limit(1));
+    return rows[0] ?? null;
+  }
+  async updateUser(id: string, patch: Partial<UserRecord>) {
+    return this.one<UserRecord>(await this.db.from('users').update(toRow(patch)).eq('id', id).select().maybeSingle(), 'User');
+  }
+  async addMembership(m: Omit<MembershipRecord, 'createdAt'>) {
+    return this.one<MembershipRecord>(await this.db.from('memberships').upsert(toRow(m), { onConflict: 'org_id,user_id', ignoreDuplicates: false }).select().single());
+  }
+  async getMembership(orgId: string, userId: string) {
+    return this.maybe<MembershipRecord>(await this.db.from('memberships').select().eq('org_id', orgId).eq('user_id', userId).maybeSingle());
+  }
+  async listMembershipsForUser(userId: string) {
+    return this.many<MembershipRecord>(await this.db.from('memberships').select().eq('user_id', userId).order('created_at'));
+  }
+  async listMembers(orgId: string) {
+    return this.many<MembershipRecord>(await this.db.from('memberships').select().eq('org_id', orgId).order('created_at'));
+  }
+  async updateMembership(orgId: string, userId: string, role: Role) {
+    this.one(await this.db.from('memberships').update({ role }).eq('org_id', orgId).eq('user_id', userId).select().maybeSingle(), 'Member');
+  }
+  async removeMembership(orgId: string, userId: string) {
+    this.check(await this.db.from('memberships').delete().eq('org_id', orgId).eq('user_id', userId));
+  }
+
+  // Invitations
+  async createInvitation(i: Omit<InvitationRecord, 'id' | 'createdAt' | 'acceptedAt'>) {
+    return this.one<InvitationRecord>(await this.db.from('invitations').insert(toRow(i)).select().single());
+  }
+  async listInvitations(orgId: string) {
+    return this.many<InvitationRecord>(await this.db.from('invitations').select().eq('org_id', orgId).order('created_at', { ascending: false }));
+  }
+  async listPendingInvitationsForEmail(email: string) {
+    return this.many<InvitationRecord>(
+      await this.db.from('invitations').select().eq('email', email).is('accepted_at', null).gt('expires_at', new Date().toISOString())
+    );
+  }
+  async acceptInvitation(id: string) {
+    this.check(await this.db.from('invitations').update({ accepted_at: new Date().toISOString() }).eq('id', id));
+  }
+  async deleteInvitation(orgId: string, id: string) {
+    this.one(await this.db.from('invitations').delete().eq('org_id', orgId).eq('id', id).select().maybeSingle(), 'Invitation');
+  }
+
+  // Sessions and email codes
+  async createSession(s: Omit<SessionRecord, 'id' | 'createdAt' | 'lastUsedAt' | 'revokedAt'>) {
+    return this.one<SessionRecord>(await this.db.from('sessions').insert(toRow(s)).select().single());
+  }
+  async findSessionByHash(hash: string) {
+    return this.maybe<SessionRecord>(await this.db.from('sessions').select().eq('token_hash', hash).maybeSingle());
+  }
+  async touchSession(id: string) {
+    await this.db.from('sessions').update({ last_used_at: new Date().toISOString() }).eq('id', id);
+  }
+  async revokeSession(id: string) {
+    this.check(await this.db.from('sessions').update({ revoked_at: new Date().toISOString() }).eq('id', id));
+  }
+  async createEmailCode(c: Omit<EmailCodeRecord, 'id' | 'createdAt' | 'attempts' | 'usedAt'>) {
+    return this.one<EmailCodeRecord>(await this.db.from('email_codes').insert(toRow(c)).select().single());
+  }
+  async latestEmailCode(email: string) {
+    const rows = this.many<EmailCodeRecord>(await this.db.from('email_codes').select().eq('email', email).order('created_at', { ascending: false }).limit(1));
+    return rows[0] ?? null;
+  }
+  async countEmailCodesSince(email: string, since: string) {
+    return this.count(this.db.from('email_codes').select('id', { count: 'exact', head: true }).eq('email', email).gte('created_at', since));
+  }
+  async updateEmailCode(id: string, patch: Partial<Pick<EmailCodeRecord, 'attempts' | 'usedAt'>>) {
+    this.check(await this.db.from('email_codes').update(toRow(patch)).eq('id', id));
+  }
+
+  // Organization AI keys
+  async upsertOrgAiKey(k: Omit<OrgAiKeyRecord, 'updatedAt'>) {
+    return this.one<OrgAiKeyRecord>(
+      await this.db.from('org_ai_keys').upsert({ ...toRow(k), updated_at: new Date().toISOString() }, { onConflict: 'org_id,provider' }).select().single()
+    );
+  }
+  async listOrgAiKeys(orgId: string) {
+    return this.many<OrgAiKeyRecord>(await this.db.from('org_ai_keys').select().eq('org_id', orgId));
+  }
+  async deleteOrgAiKey(orgId: string, provider: AIProviderId) {
+    this.check(await this.db.from('org_ai_keys').delete().eq('org_id', orgId).eq('provider', provider));
+  }
+
+  // Projects
   async createProject(p: Omit<ProjectRecord, 'id' | 'createdAt' | 'updatedAt'>) {
-    return toProject(this.one(await this.db.from('projects').insert(fromProject(p)).select().single()));
+    return this.one<ProjectRecord>(await this.db.from('projects').insert(toRow(p)).select().single());
   }
-  async getProject(id: string) {
-    const data = this.check(await this.db.from('projects').select().eq('id', id).maybeSingle());
-    return data ? toProject(data) : null;
+  async getProject(orgId: string, id: string) {
+    return this.maybe<ProjectRecord>(await this.db.from('projects').select().eq('org_id', orgId).eq('id', id).maybeSingle());
   }
-  async findProjectByExternalId(externalId: string) {
-    const data = this.check(await this.db.from('projects').select().eq('external_id', externalId).maybeSingle());
-    return data ? toProject(data) : null;
+  async findProjectByExternalId(orgId: string, externalId: string) {
+    return this.maybe<ProjectRecord>(await this.db.from('projects').select().eq('org_id', orgId).eq('external_id', externalId).maybeSingle());
   }
-  async listProjects() {
-    return (this.check(await this.db.from('projects').select().order('created_at', { ascending: false })) ?? []).map(toProject);
+  async listProjects(orgId: string) {
+    return this.many<ProjectRecord>(await this.db.from('projects').select().eq('org_id', orgId).order('created_at', { ascending: false }));
   }
-  async updateProject(id: string, patch: Partial<ProjectRecord>) {
-    const data = this.check(await this.db.from('projects').update({ ...fromProject(patch), updated_at: new Date().toISOString() }).eq('id', id).select().maybeSingle());
-    if (!data) {
-      throw notFound('Project');
-    }
-    return toProject(data);
+  async countProjects(orgId: string) {
+    return this.count(this.db.from('projects').select('id', { count: 'exact', head: true }).eq('org_id', orgId));
   }
-  async deleteProject(id: string) {
-    this.check(await this.db.from('projects').delete().eq('id', id));
+  async updateProject(orgId: string, id: string, patch: Partial<ProjectRecord>) {
+    return this.one<ProjectRecord>(
+      await this.db.from('projects').update({ ...toRow(patch), updated_at: new Date().toISOString() }).eq('org_id', orgId).eq('id', id).select().maybeSingle(),
+      'Project'
+    );
+  }
+  async deleteProject(orgId: string, id: string) {
+    this.one(await this.db.from('projects').delete().eq('org_id', orgId).eq('id', id).select('id').maybeSingle(), 'Project');
   }
 
+  // Scans
   async createScan(s: Omit<ScanRecord, 'id' | 'createdAt'>) {
-    return toScan(this.one(await this.db.from('scans').insert(fromScan(s)).select().single()));
+    return this.one<ScanRecord>(await this.db.from('scans').insert(toRow(s)).select().single());
   }
-  async getScan(id: string) {
-    const data = this.check(await this.db.from('scans').select().eq('id', id).maybeSingle());
-    return data ? toScan(data) : null;
+  async getScan(orgId: string, id: string) {
+    return this.maybe<ScanRecord>(await this.db.from('scans').select().eq('org_id', orgId).eq('id', id).maybeSingle());
   }
   async updateScan(id: string, patch: Partial<ScanRecord>) {
-    const data = this.check(await this.db.from('scans').update(fromScan(patch)).eq('id', id).select().maybeSingle());
-    if (!data) {
-      throw notFound('Scan');
+    return this.one<ScanRecord>(await this.db.from('scans').update(toRow(patch)).eq('id', id).select().maybeSingle(), 'Scan');
+  }
+  async listScans(orgId: string, projectId: string, opts: { limit: number; withResult: boolean }) {
+    const rows = this.many<ScanRecord>(
+      (await this.db
+        .from('scans')
+        .select(opts.withResult ? '*' : SCAN_LIST_COLUMNS)
+        .eq('org_id', orgId)
+        .eq('project_id', projectId)
+        .order('created_at', { ascending: false })
+        .limit(opts.limit)) as unknown as Result<Row[]>
+    );
+    return rows.map((r) => ({ ...r, result: r.result ?? null }));
+  }
+  async countScansSince(orgId: string, since: string, source?: ScanSource) {
+    let q = this.db.from('scans').select('id', { count: 'exact', head: true }).eq('org_id', orgId).gte('created_at', since);
+    if (source) {
+      q = q.eq('source', source);
     }
-    return toScan(data);
+    return this.count(q);
   }
-  async listScans(projectId: string, opts: { limit: number; withResult: boolean }) {
+  async pruneScans(orgId: string, projectId: string, keep: number) {
     const rows = this.check(
-      await this.db.from('scans').select(opts.withResult ? '*' : SCAN_LIST_COLUMNS).eq('project_id', projectId).order('created_at', { ascending: false }).limit(opts.limit)
-    ) as unknown as Row[];
-    return (rows ?? []).map(toScan);
-  }
-  async pruneScans(projectId: string, keep: number) {
-    const rows = this.check(await this.db.from('scans').select('id').eq('project_id', projectId).order('created_at', { ascending: false }).range(keep, keep + 1000)) ?? [];
+      await this.db.from('scans').select('id').eq('org_id', orgId).eq('project_id', projectId).order('created_at', { ascending: false }).range(keep, keep + 1000)
+    ) ?? [];
     if (rows.length) {
       this.check(await this.db.from('scans').delete().in('id', rows.map((r) => r.id)));
     }
   }
 
+  // Insights
   async addInsight(i: InsightRecord) {
-    const { projectId, scanId, ...data } = i;
-    this.check(await this.db.from('ai_insights').insert({ id: i.id, project_id: projectId, scan_id: scanId, task: i.task, data }));
+    const { orgId, projectId, scanId, ...data } = i;
+    this.check(await this.db.from('ai_insights').insert({ id: i.id, org_id: orgId, project_id: projectId, scan_id: scanId, task: i.task, data, created_at: i.createdAt }));
     return i;
   }
-  async listInsights(filter: { projectId?: string; scanId?: string; limit: number }) {
-    let q = this.db.from('ai_insights').select().order('created_at', { ascending: false }).limit(filter.limit);
+  async listInsights(orgId: string, filter: { projectId?: string; scanId?: string; limit: number }) {
+    let q = this.db.from('ai_insights').select().eq('org_id', orgId).order('created_at', { ascending: false }).limit(filter.limit);
     if (filter.projectId) {
       q = q.eq('project_id', filter.projectId);
     }
     if (filter.scanId) {
       q = q.eq('scan_id', filter.scanId);
     }
-    return (this.check(await q) ?? []).map(toInsight);
+    return (this.check(await q) ?? []).map((r: Row) => ({ ...(r.data as InsightRecord), orgId: r.org_id as string, projectId: r.project_id as string, scanId: r.scan_id as string }));
+  }
+  async countInsightsSince(orgId: string, since: string) {
+    return this.count(this.db.from('ai_insights').select('id', { count: 'exact', head: true }).eq('org_id', orgId).gte('created_at', since));
   }
 
+  // API keys
   async createApiKey(k: Omit<ApiKeyRecord, 'id' | 'createdAt' | 'lastUsedAt' | 'revokedAt'>) {
-    return toKey(this.one(await this.db.from('api_keys').insert({ name: k.name, prefix: k.prefix, key_hash: k.keyHash, scopes: k.scopes }).select().single()));
+    return this.one<ApiKeyRecord>(await this.db.from('api_keys').insert(toRow(k)).select().single());
   }
   async findApiKeyByHash(hash: string) {
-    const data = this.check(await this.db.from('api_keys').select().eq('key_hash', hash).maybeSingle());
-    return data ? toKey(data) : null;
+    return this.maybe<ApiKeyRecord>(await this.db.from('api_keys').select().eq('key_hash', hash).maybeSingle());
   }
-  async listApiKeys() {
-    return (this.check(await this.db.from('api_keys').select().order('created_at', { ascending: false })) ?? []).map(toKey);
+  async listApiKeys(orgId: string) {
+    return this.many<ApiKeyRecord>(await this.db.from('api_keys').select().eq('org_id', orgId).order('created_at', { ascending: false }));
   }
   async touchApiKey(id: string) {
     await this.db.from('api_keys').update({ last_used_at: new Date().toISOString() }).eq('id', id);
   }
-  async revokeApiKey(id: string) {
-    const data = this.check(await this.db.from('api_keys').update({ revoked_at: new Date().toISOString() }).eq('id', id).select().maybeSingle());
-    if (!data) {
-      throw notFound('API key');
-    }
+  async revokeApiKey(orgId: string, id: string) {
+    this.one(await this.db.from('api_keys').update({ revoked_at: new Date().toISOString() }).eq('org_id', orgId).eq('id', id).select().maybeSingle(), 'API key');
   }
 }

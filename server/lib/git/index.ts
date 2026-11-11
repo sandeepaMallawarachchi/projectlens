@@ -37,6 +37,8 @@ export function sourceFor(project: ProjectRecord): RepoSource {
       return new GitHubSource(project.repository, token, project.baseUrl, f);
     case 'gitlab':
       return new GitLabSource(project.repository, token, project.baseUrl, f);
+    case 'none':
+      throw new HttpError(400, 'no_repository', 'This project has no repository connection');
     case 'local':
       if (!env().allowLocalRepos) {
         throw new HttpError(400, 'invalid_request', 'Local repositories are disabled (ALLOW_LOCAL_REPOS)');

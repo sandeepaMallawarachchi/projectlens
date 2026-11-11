@@ -77,6 +77,7 @@ export function scanDto(s: ScanRecord) {
   return {
     id: s.id,
     projectId: s.projectId,
+    source: s.source,
     status: s.status,
     mode: s.mode,
     ref: s.ref,

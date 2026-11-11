@@ -6,7 +6,7 @@ import type { Params } from '@/lib/route-utils';
 export const dynamic = 'force-dynamic';
 
 export const DELETE = handle(async (req: Request, { params }: Params<'keyId'>) => {
-  await authenticate(req, 'admin');
-  await getStore().revokeApiKey((await params).keyId);
+  const principal = await authenticate(req, 'admin');
+  await getStore().revokeApiKey(principal.orgId, (await params).keyId);
   return new Response(null, { status: 204 });
 });

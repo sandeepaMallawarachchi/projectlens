@@ -19,6 +19,7 @@ import { resolveNavigationTarget } from './views/navigation';
 import { REQUIREMENTS_FILE, REQUIREMENTS_TEMPLATE } from './analyzers/progress/requirements';
 import { getConfig, modelFor, modelSettingKey } from './config';
 import { isInside } from './utils/paths';
+import { CloudController } from './cloud/cloudController';
 
 export interface WebviewSink {
   postMessage(message: HostMessage): Thenable<boolean>;
@@ -39,6 +40,7 @@ export class ProjectLensController implements vscode.Disposable {
   private readonly output = vscode.window.createOutputChannel('ProjectLens');
   private readonly state: AppState;
   private openDashboardHandler: ((tab?: string) => void) | null = null;
+  readonly cloud: CloudController;
 
   constructor(
     private readonly context: vscode.ExtensionContext,
@@ -77,12 +79,23 @@ export class ProjectLensController implements vscode.Disposable {
         insights: store.insights(),
         sessionUsage: { promptTokens: 0, completionTokens: 0, totalTokens: 0, requests: 0 }
       },
+      cloud: undefined as unknown as AppState['cloud'],
       settings: { gitleaksEnabled: cfg.gitleaks.enabled, diagnosticsEnabled: cfg.diagnostics.enabled }
     };
+    this.cloud = new CloudController({
+      context,
+      broadcast: () => this.broadcast(),
+      log: (m) => this.log(m),
+      latestResult: () => this.state.result,
+      workspaceRoot: () => this.workspaceRoots()[0] ?? null
+    });
+    // Shared object: cloud state mutations are visible in the next broadcast.
+    this.state.cloud = this.cloud.state;
   }
 
   async init(): Promise<void> {
     await this.refreshAiState();
+    void this.cloud.init();
     this.state.result = await this.store.loadLatest();
     if (this.state.result) {
       this.publishDiagnostics(this.state.result);
@@ -245,6 +258,49 @@ export class ProjectLensController implements vscode.Disposable {
       case 'createRequirements':
         await this.createRequirementsFile();
         return;
+      case 'cloudSignIn':
+        return this.cloud.signIn(msg.method);
+      case 'cloudSignOut':
+        return this.cloud.signOut();
+      case 'cloudRefresh':
+        return this.cloud.refresh();
+      case 'cloudSelectOrg':
+        return this.cloud.selectOrg(msg.orgId);
+      case 'cloudCreateOrg':
+        return this.cloud.createOrg();
+      case 'cloudInvite':
+        return this.cloud.invite();
+      case 'cloudChangeRole':
+        return this.cloud.changeRole(msg.userId, msg.role);
+      case 'cloudRemoveMember':
+        return this.cloud.removeMember(msg.userId);
+      case 'cloudRevokeInvite':
+        return this.cloud.revokeInvite(msg.invitationId);
+      case 'cloudCreateKey':
+        return this.cloud.createApiKey();
+      case 'cloudRevokeKey':
+        return this.cloud.revokeApiKey(msg.keyId);
+      case 'cloudSetAiKey':
+        return this.cloud.setAiKey(msg.provider);
+      case 'cloudRemoveAiKey':
+        return this.cloud.removeAiKey(msg.provider);
+      case 'cloudSetAiDefault':
+        return this.cloud.setAiDefault(msg.provider);
+      case 'cloudLink':
+        return this.cloud.linkWorkspace();
+      case 'cloudUnlink':
+        return this.cloud.unlink();
+      case 'cloudSetToken':
+        return this.cloud.setRepositoryToken();
+      case 'cloudScan':
+        return this.cloud.cloudScan(msg.projectId);
+      case 'cloudUpload':
+        return this.cloud.upload();
+      case 'cloudToggleAutoUpload':
+        return this.cloud.setAutoUpload(msg.enabled);
+      case 'cloudOpenSettings':
+        await vscode.commands.executeCommand('workbench.action.openSettings', 'projectlens.cloud');
+        return;
     }
   }
 
@@ -293,6 +349,7 @@ export class ProjectLensController implements vscode.Disposable {
       this.state.history = await this.store.saveLatest(result, cfg.historyMax);
       this.publishDiagnostics(result);
       this.log(`Scan finished: ${result.findings.length} findings, ${result.coverage.filesAnalyzed} files, ${result.coverage.cacheHits} cache hits, ${result.coverage.durationMs} ms`);
+      void this.cloud.onScanCompleted();
       return result;
     } catch (err) {
       if (err instanceof CancelledError || abort.signal.aborted) {

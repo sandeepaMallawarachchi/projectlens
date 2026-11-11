@@ -14,10 +14,10 @@ export const maxDuration = 300;
 export const OPTIONS = preflight;
 
 export const GET = handle(async (req: Request, { params }: Params<'projectId'>) => {
-  await authenticate(req, 'read');
-  const project = await resolveProject((await params).projectId);
+  const principal = await authenticate(req, 'read');
+  const project = await resolveProject(principal.orgId, (await params).projectId);
   const limit = intParam(new URL(req.url), 'limit', 20, 100);
-  const scans = await getStore().listScans(project.id, { limit, withResult: false });
+  const scans = await getStore().listScans(principal.orgId, project.id, { limit, withResult: false });
   return json({ data: scans.map(scanDto) });
 });
 
@@ -27,7 +27,7 @@ export const GET = handle(async (req: Request, { params }: Params<'projectId'>) 
  */
 export const POST = handle(async (req: Request, { params }: Params<'projectId'>) => {
   const principal = await authenticate(req, 'scan');
-  const project = await resolveProject((await params).projectId);
+  const project = await resolveProject(principal.orgId, (await params).projectId);
   const body = await readJson(req, startScanSchema);
   const started = await startScan(project, { mode: body.mode, ref: body.ref, force: body.force, triggeredBy: principal.actor, callbackUrl: body.callbackUrl });
   if (started.cached || !started.run) {

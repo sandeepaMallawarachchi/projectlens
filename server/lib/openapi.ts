@@ -15,9 +15,9 @@ export function openApiSpec(origin: string) {
     openapi: '3.1.0',
     info: {
       title: 'ProjectLens API',
-      version: '0.1.0',
+      version: '0.2.0',
       description:
-        'Remote analysis of GitHub/GitLab repositories: technologies, code quality, security, implementation progress, production readiness and optional AI insights. Authenticate with `Authorization: Bearer <api key>`. Scopes: read, scan, ai, admin.'
+        'Hosted, multi-tenant analysis of GitHub/GitLab repositories: technologies, code quality, security, implementation progress, production readiness and AI insights (with each organization\'s own AI key). Authenticate with `Authorization: Bearer <token>`: an organization API key (`plk_…`, scopes read/scan/ai/admin) for integrations, or a user session (`pls_…`, from GitHub or email sign-in) with optional `X-ProjectLens-Org` to select the organization.'
     },
     servers: [{ url: `${origin}/api/v1` }],
     security: [{ bearer: [] }],
@@ -30,7 +30,7 @@ export function openApiSpec(origin: string) {
           required: ['name', 'provider', 'repository'],
           properties: {
             name: { type: 'string' },
-            provider: { type: 'string', enum: ['github', 'gitlab'] },
+            provider: { type: 'string', enum: ['github', 'gitlab', 'none'], description: '`none` = no repository access; results arrive as uploads from the VS Code extension' },
             repository: { type: 'string', description: '`owner/repo`, `group/subgroup/project`, or the repository URL' },
             ref: { type: 'string', description: 'Branch/tag/commit; default branch when omitted' },
             accessToken: { type: 'string', description: 'GitHub token with Contents: read, or GitLab token with read_repository. Encrypted at rest, never returned.' },
@@ -161,6 +161,33 @@ export function openApiSpec(origin: string) {
           responses: { '201': ok(data({ type: 'object' }), 'Created'), ...errorResponses }
         }
       },
+      '/projects/{projectId}/uploads': {
+        parameters: [projectId],
+        post: {
+          summary: 'Upload a scan result from the VS Code extension (scope: scan)',
+          description: 'Body: `{ result: ScanResult, commitSha?, branch? }`. Local paths are removed and evidence is redacted again before storage.',
+          responses: { '201': ok(data(ref('Scan')), 'Created'), ...errorResponses }
+        }
+      },
+      '/usage': { get: { summary: 'Usage and plan limits of the caller\'s organization', responses: { '200': ok(data({ type: 'object' })), ...errorResponses } } },
+      '/auth/config': { get: { summary: 'Available sign-in methods', security: [], responses: { '200': ok(data({ type: 'object' })) } } },
+      '/auth/github': { post: { summary: 'Sign in with a GitHub OAuth token (returns a pls_ session)', security: [], responses: { '200': ok(data({ type: 'object' })), ...errorResponses } } },
+      '/auth/email/start': { post: { summary: 'Email a 6-digit sign-in code', security: [], responses: { '200': ok(data({ type: 'object' })), ...errorResponses } } },
+      '/auth/email/verify': { post: { summary: 'Verify the code (returns a pls_ session)', security: [], responses: { '200': ok(data({ type: 'object' })), ...errorResponses } } },
+      '/auth/logout': { post: { summary: 'Revoke the current session', responses: { '204': { description: 'Signed out' } } } },
+      '/me': { get: { summary: 'Current user and organizations (session)', responses: { '200': ok(data({ type: 'object' })), ...errorResponses } } },
+      '/orgs': {
+        get: { summary: 'Your organizations (session)', responses: { '200': ok(data({ type: 'array', items: { type: 'object' } })) } },
+        post: { summary: 'Create an organization (session)', responses: { '201': ok(data({ type: 'object' }), 'Created') } }
+      },
+      '/orgs/{orgId}': { parameters: [{ name: 'orgId', in: 'path', required: true, schema: { type: 'string' } }], get: { summary: 'Organization', responses: { '200': ok(data({ type: 'object' })) } }, patch: { summary: 'Rename (admin)', responses: { '200': ok(data({ type: 'object' })) } } },
+      '/orgs/{orgId}/members': { get: { summary: 'Members', responses: { '200': ok(data({ type: 'array', items: { type: 'object' } })) } } },
+      '/orgs/{orgId}/members/{userId}': { patch: { summary: 'Change role (admin; owners manage owners)', responses: { '200': ok(data({ type: 'object' })) } }, delete: { summary: 'Remove member or leave', responses: { '204': { description: 'Removed' } } } },
+      '/orgs/{orgId}/invitations': { get: { summary: 'Invitations (admin)', responses: { '200': ok(data({ type: 'array', items: { type: 'object' } })) } }, post: { summary: 'Invite by email (admin); joins on next sign-in', responses: { '201': ok(data({ type: 'object' }), 'Created') } } },
+      '/orgs/{orgId}/ai-keys': { get: { summary: 'AI providers configured for the organization (keys never returned)', responses: { '200': ok(data({ type: 'object' })) } } },
+      '/orgs/{orgId}/ai-keys/{provider}': { put: { summary: 'Set the organization\'s own AI key (admin; validated, encrypted)', responses: { '200': ok(data({ type: 'object' })) } }, delete: { summary: 'Remove the key (admin)', responses: { '204': { description: 'Removed' } } } },
+      '/orgs/{orgId}/ai-settings': { put: { summary: 'Default AI provider/model (admin)', responses: { '200': ok(data({ type: 'object' })) } } },
+      '/orgs/{orgId}/usage': { get: { summary: 'Usage and plan limits', responses: { '200': ok(data({ type: 'object' })) } } },
       '/keys/{keyId}': { delete: { summary: 'Revoke an API key (scope: admin)', parameters: [{ name: 'keyId', in: 'path', required: true, schema: { type: 'string' } }], responses: { '204': { description: 'Revoked' }, ...errorResponses } } }
     }
   };
