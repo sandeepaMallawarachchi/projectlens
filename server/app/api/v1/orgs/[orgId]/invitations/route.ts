@@ -18,7 +18,7 @@ export const GET = handle(async (req: Request, { params }: Params<'orgId'>) => {
 
 /**
  * Invites someone by email. They join automatically the next time they sign in with that
- * (verified) email — via GitHub or email code. An email is sent when email delivery is configured.
+ * (verified) email - via GitHub or email code. An email is sent when email delivery is configured.
  */
 export const POST = handle(async (req: Request, { params }: Params<'orgId'>) => {
   const { org, membership, user } = await orgMember(req, (await params).orgId, 'admin');
