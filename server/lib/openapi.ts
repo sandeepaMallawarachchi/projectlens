@@ -15,7 +15,7 @@ export function openApiSpec(origin: string) {
     openapi: '3.1.0',
     info: {
       title: 'ProjectLens API',
-      version: '0.2.0',
+      version: '0.3.0',
       description:
         'Hosted, multi-tenant analysis of GitHub/GitLab repositories: technologies, code quality, security, implementation progress, production readiness and AI insights (with each organization\'s own AI key). Authenticate with `Authorization: Bearer <token>`: an organization API key (`plk_…`, scopes read/scan/ai/audit/admin) for integrations, or a user session (`pls_…`, from GitHub or email sign-in) with optional `X-ProjectLens-Org` to select the organization.'
     },

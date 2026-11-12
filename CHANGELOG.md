@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.0
 
 - **Prompt Guard:** checks prompts sent to AI coding tools for secrets and sensitive data, on your computer, before they are sent.
   - Supported tools: Claude Code, Codex and Cursor (blocked before sending), Antigravity (blocked before the model call) and GitHub Copilot (alert right after sending; Copilot hooks cannot block).
