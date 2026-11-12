@@ -13,8 +13,8 @@ function Tag({ tone = 'muted', children }: { tone?: Tone; children: ReactNode })
   return <span className={`vx-tag vx-${tone}`}>{children}</span>;
 }
 
-function Btn({ primary, children }: { primary?: boolean; children: ReactNode }) {
-  return <span className={`vx-btn ${primary ? 'vx-btn-primary' : ''}`}>{children}</span>;
+function Btn({ primary, pressed, children }: { primary?: boolean; pressed?: boolean; children: ReactNode }) {
+  return <span className={`vx-btn ${primary ? 'vx-btn-primary' : ''} ${pressed ? 'vx-pressed' : ''}`}>{children}</span>;
 }
 
 function Meter({ value, tone }: { value: number; tone: Tone }) {
@@ -25,10 +25,61 @@ function Meter({ value, tone }: { value: number; tone: Tone }) {
   );
 }
 
+function prefersReducedMotion(): boolean {
+  return typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+
+/**
+ * Scripted demo: returns the current stage (0…times.length). Stage n starts at times[n-1] ms.
+ * Each screen remounts when its step opens, so the script replays. Reduced motion jumps to the end.
+ */
+function useStage(times: number[]): number {
+  const [stage, setStage] = useState(0);
+  useEffect(() => {
+    if (prefersReducedMotion()) {
+      setStage(times.length);
+      return;
+    }
+    const timers = times.map((t, i) => setTimeout(() => setStage(i + 1), t));
+    return () => timers.forEach(clearTimeout);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  return stage;
+}
+
+/** Counts from `from` to `to` over `ms` once `start` is true. */
+function useCount(to: number, start: boolean, ms = 1200, from = 0): number {
+  const [value, setValue] = useState(from);
+  useEffect(() => {
+    if (!start) {
+      return;
+    }
+    if (prefersReducedMotion()) {
+      setValue(to);
+      return;
+    }
+    const t0 = Date.now();
+    const timer = setInterval(() => {
+      const p = Math.min(1, (Date.now() - t0) / ms);
+      setValue(Math.round(from + (to - from) * (1 - Math.pow(1 - p, 3))));
+      if (p >= 1) {
+        clearInterval(timer);
+      }
+    }, 33);
+    return () => clearInterval(timer);
+  }, [start, to, ms, from]);
+  return value;
+}
+
+/** Types `text` character by character once `start` is true. */
+function useTyping(text: string, start: boolean, ms = 1600): string {
+  const n = useCount(text.length, start, ms);
+  return text.slice(0, n);
+}
+
 const NAV = ['Overview', 'Technologies', 'Progress', 'Code Quality', 'Security', 'AI Insights', 'Cloud', 'Prompt Guard', 'Reports'];
 
 /** VS Code window frame with the ProjectLens dashboard tab. */
-function Window({ active, children, statusRight, chat }: { active: string; children: ReactNode; statusRight?: ReactNode; chat?: ReactNode }) {
+function Window({ active, children, statusRight, chat, scanPressed }: { active: string; children: ReactNode; statusRight?: ReactNode; chat?: ReactNode; scanPressed?: boolean }) {
   return (
     <div className={`vx-window ${chat ? 'vx-has-chat' : ''}`} aria-hidden>
       <div className="vx-titlebar">
@@ -70,7 +121,9 @@ function Window({ active, children, statusRight, chat }: { active: string; child
                 <b>acme-web</b>
                 <span className="vx-spacer" />
                 <Btn>Quick Scan</Btn>
-                <Btn primary>Full Scan</Btn>
+                <Btn primary pressed={scanPressed}>
+                  Full Scan
+                </Btn>
                 <Btn>AI Deep Review</Btn>
               </div>
               {children}
@@ -98,7 +151,27 @@ function Card({ title, sub, children }: { title: string; sub?: string; children:
   );
 }
 
+function Score({ label, value, grade, tone, on, delay }: { label: string; value: number; grade: string; tone: Tone; on: boolean; delay: number }) {
+  // Start one tick after mount so the bar animates from zero.
+  const ready = useStage([60]) >= 1 && on;
+  const v = useCount(value, ready, 1100);
+  return (
+    <div className={`vx-score vx-in`} style={{ animationDelay: `${delay}ms` }}>
+      <span className="vx-sub">{label}</span>
+      <span className="vx-big">
+        {v}
+        <small>/100</small> {ready && v === value && <Tag tone={tone}>{grade}</Tag>}
+      </span>
+      <Meter value={ready ? value : 0} tone={tone} />
+      <span className="vx-link">Why this score?</span>
+    </div>
+  );
+}
+
 function ScanScreen() {
+  // 0 idle → 1 Full Scan pressed + scanning → 2 results
+  const stage = useStage([500, 2900]);
+  const files = useCount(312, stage >= 1, 2200);
   const scores: [string, number, string, Tone][] = [
     ['Code Quality', 82, 'B', 'good'],
     ['Security', 64, 'C', 'warn'],
@@ -106,37 +179,42 @@ function ScanScreen() {
     ['Production Ready', 48, 'D', 'bad']
   ];
   return (
-    <Window active="Overview">
-      <Card title="Summary" sub="Full scan · just now · 4.2 s">
-        <div className="vx-text">Next.js project written mainly in TypeScript · 312 files analyzed · data layer: Prisma · auth: NextAuth.</div>
-      </Card>
-      <div className="vx-grid4">
-        {scores.map(([l, v, g, t]) => (
-          <div key={l} className="vx-score">
-            <span className="vx-sub">{l}</span>
-            <span className="vx-big">
-              {v}
-              <small>/100</small> <Tag tone={t}>{g}</Tag>
-            </span>
-            <Meter value={v} tone={t} />
-            <span className="vx-link">Why this score?</span>
+    <Window active="Overview" scanPressed={stage === 1}>
+      {stage < 2 ? (
+        <Card title={stage === 1 ? 'Full scan in progress…' : 'Ready to scan'} sub={stage === 1 ? `Analyzing src/ · ${files} files` : 'Choose Quick Scan or Full Scan'}>
+          <span className="vx-meter vx-meter-lg">
+            <span className="vx-meter-fill vx-bg-accent vx-scanbar" style={{ width: stage === 1 ? '100%' : '0%' }} />
+          </span>
+          {stage === 1 && <div className="vx-sub vx-shimmer">Technologies · Code quality · Security rules · Progress</div>}
+        </Card>
+      ) : (
+        <>
+          <div className="vx-card vx-in">
+            <div className="vx-card-title">Summary</div>
+            <div className="vx-sub">Full scan · just now · 2.4 s</div>
+            <div className="vx-text">Next.js project written mainly in TypeScript · 312 files analyzed · data layer: Prisma · auth: NextAuth.</div>
           </div>
-        ))}
-      </div>
-      <div className="vx-stats">
-        <span className="vx-stat vx-stat-bad">
-          <b>2</b>Critical
-        </span>
-        <span className="vx-stat vx-stat-warn">
-          <b>5</b>High
-        </span>
-        <span className="vx-stat">
-          <b>18</b>Security
-        </span>
-        <span className="vx-stat">
-          <b>74%</b>Requirements
-        </span>
-      </div>
+          <div className="vx-grid4">
+            {scores.map(([l, v, g, t], i) => (
+              <Score key={l} label={l} value={v} grade={g} tone={t} on delay={i * 120} />
+            ))}
+          </div>
+          <div className="vx-stats vx-in" style={{ animationDelay: '600ms' }}>
+            <span className="vx-stat vx-stat-bad">
+              <b>2</b>Critical
+            </span>
+            <span className="vx-stat vx-stat-warn">
+              <b>5</b>High
+            </span>
+            <span className="vx-stat">
+              <b>18</b>Security
+            </span>
+            <span className="vx-stat">
+              <b>74%</b>Requirements
+            </span>
+          </div>
+        </>
+      )}
     </Window>
   );
 }
@@ -148,6 +226,8 @@ function FindingsScreen() {
     ['medium', 'warn', 'Missing rate limit on login', 'src/app/api/auth/route.ts:8', 'POST handler without limiter'],
     ['low', 'muted', 'TODO left in payment flow', 'src/app/checkout/page.tsx:77', '// TODO: handle declined cards']
   ];
+  // Highlight the first finding as if hovered, after the list has appeared.
+  const stage = useStage([2200]);
   return (
     <Window active="Security">
       <Card title="Security findings" sub="Static analysis with stated confidence. Evidence is redacted.">
@@ -157,12 +237,15 @@ function FindingsScreen() {
           <Tag>Medium 7</Tag>
           <Tag>Low 4</Tag>
         </div>
-        {rows.map(([sev, tone, title, file, ev]) => (
-          <div key={title} className="vx-finding">
+        {rows.map(([sev, tone, title, file, ev], i) => (
+          <div key={title} className={`vx-finding vx-in-left ${stage >= 1 && i === 0 ? 'vx-hover' : ''}`} style={{ animationDelay: `${200 + i * 350}ms` }}>
             <Tag tone={tone}>{sev}</Tag>
             <div>
               <div className="vx-strong">{title}</div>
-              <div className="vx-file">{file}</div>
+              <div className="vx-file">
+                {file}
+                {stage >= 1 && i === 0 && <span className="vx-open"> → open at line 12</span>}
+              </div>
               <code className="vx-code">{ev}</code>
             </div>
           </div>
@@ -173,6 +256,13 @@ function FindingsScreen() {
 }
 
 function AiScreen() {
+  // 0 consent → 1 Send pressed → 2 analyzing → 3 results
+  const stage = useStage([1500, 1900, 3300]);
+  const items = [
+    'Billing reads a live Stripe key from source. Move it to environment variables.',
+    'Checkout and orders modules are complete; refunds are a stub.',
+    'Add tests around auth before production.'
+  ];
   return (
     <Window active="AI Insights">
       <Card title="AI Insights" sub="Optional. Uses your own key: Groq, OpenAI, Gemini or Claude.">
@@ -182,26 +272,47 @@ function AiScreen() {
           <Btn>Security concerns</Btn>
         </div>
       </Card>
-      <div className="vx-modal">
-        <div className="vx-strong">Send to Claude?</div>
-        <div className="vx-text">Summary of the local analysis + 6 file excerpts · ~3,900 tokens · 2 values redacted · .env files never sent.</div>
-        <div className="vx-row">
-          <Btn primary>Send</Btn>
-          <Btn>Preview payload</Btn>
+      {stage < 2 && (
+        <div className="vx-modal vx-in">
+          <div className="vx-strong">Send to Claude?</div>
+          <div className="vx-text">Summary of the local analysis + 6 file excerpts · ~3,900 tokens · 2 values redacted · .env files never sent.</div>
+          <div className="vx-row">
+            <Btn primary pressed={stage === 1}>
+              Send
+            </Btn>
+            <Btn>Preview payload</Btn>
+          </div>
         </div>
-      </div>
-      <Card title="Project assessment" sub="AI-generated · validated against the scan">
-        <ul className="vx-list">
-          <li>Billing reads a live Stripe key from source. Move it to environment variables.</li>
-          <li>Checkout and orders modules are complete; refunds are a stub.</li>
-          <li>Add tests around auth before production.</li>
-        </ul>
-      </Card>
+      )}
+      {stage === 2 && (
+        <div className="vx-card vx-in">
+          <div className="vx-card-title">Analyzing…</div>
+          <span className="vx-skel" />
+          <span className="vx-skel vx-skel-short" />
+          <span className="vx-skel" />
+        </div>
+      )}
+      {stage === 3 && (
+        <div className="vx-card vx-in">
+          <div className="vx-card-title">Project assessment</div>
+          <div className="vx-sub">AI-generated · validated against the scan</div>
+          <ul className="vx-list">
+            {items.map((t, i) => (
+              <li key={t} className="vx-in" style={{ animationDelay: `${i * 300}ms` }}>
+                {t}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </Window>
   );
 }
 
 function CloudScreen() {
+  // 0 idle → 1 uploading → 2 uploaded
+  const stage = useStage([900, 2300]);
+  const security = useCount(64, stage >= 2, 900, 58);
   return (
     <Window active="Cloud">
       <Card title="ProjectLens Cloud" sub="Signed in as alex@acme.dev">
@@ -210,36 +321,30 @@ function CloudScreen() {
           <Tag tone="good">Workspace linked</Tag>
         </div>
         <div className="vx-row">
-          <Btn primary>Upload latest scan</Btn>
+          <Btn primary pressed={stage === 1}>
+            {stage === 1 ? 'Uploading…' : 'Upload latest scan'}
+          </Btn>
           <Btn>Run cloud scan</Btn>
-          <span className="vx-sub">☑ Upload automatically after each scan</span>
         </div>
+        {stage >= 2 && <div className="vx-toast vx-in">✓ Scan uploaded to Acme Engineering. Your PM tool sees it now.</div>}
       </Card>
       <Card title="Projects (3)" sub="The same data your PM tool reads through the API.">
         {(
           [
-            ['acme-web', 64, 82],
+            ['acme-web', security, 82],
             ['acme-api', 77, 70],
             ['mobile-app', 58, 66]
           ] as const
-        ).map(([n, s, q]) => (
-          <div key={n} className="vx-proj">
+        ).map(([n, s, q], i) => (
+          <div key={n} className={`vx-proj ${i === 0 && stage >= 2 ? 'vx-flash' : ''}`}>
             <b>{n}</b>
             <span className="vx-sub">Security {s}</span>
             <Meter value={s} tone={s > 70 ? 'good' : 'warn'} />
             <span className="vx-sub">Quality {q}</span>
             <Meter value={q} tone="good" />
+            {i === 0 && stage >= 2 && <Tag tone="accent">just now</Tag>}
           </div>
         ))}
-      </Card>
-      <Card title="API keys" sub="For your project-management tool. Shown once.">
-        <div className="vx-proj">
-          <b>Jira integration</b>
-          <code className="vx-code">plk_3f8a…</code>
-          <Tag>read</Tag>
-          <Tag>scan</Tag>
-          <Tag>ai</Tag>
-        </div>
       </Card>
     </Window>
   );
@@ -253,18 +358,28 @@ function GuardScreen() {
     ['GitHub Copilot', 'Alerts after sending'],
     ['Antigravity', 'Blocks before sending']
   ];
+  const prompt = 'STRIPE_SECRET=sk_live_9xQ2… why does checkout fail?';
+  // 0 typing → 1 Enter → 2 blocked
+  const stage = useStage([2300, 2700]);
+  const typed = useTyping(prompt, true, 2000);
   return (
     <Window
       active="Prompt Guard"
-      statusRight={<span className="vx-status-pg">🛡 Prompt Guard: on</span>}
+      statusRight={<span className={`vx-status-pg ${stage >= 2 ? 'vx-pulse' : ''}`}>🛡 Prompt Guard: on</span>}
       chat={
         <div className="vx-chat">
-          <div className="vx-sub">AI chat</div>
-          <div className="vx-bubble">STRIPE_SECRET=sk_live_9x… why does checkout fail?</div>
-          <div className="vx-blocked">
-            <b>Blocked by ProjectLens Prompt Guard</b>
-            <span>Found: Stripe key. Nothing was sent. Resend this sanitized copy:</span>
-            <code>STRIPE_SECRET=[REDACTED credential] why does checkout fail?</code>
+          <div className="vx-sub">AI chat · Claude Code</div>
+          {stage >= 2 && (
+            <div className="vx-blocked vx-in">
+              <b>Blocked by ProjectLens Prompt Guard</b>
+              <span>Found: Stripe key. Nothing was sent. Resend this sanitized copy:</span>
+              <code>STRIPE_SECRET=[REDACTED credential] why does checkout fail?</code>
+            </div>
+          )}
+          <div className="vx-spacer" />
+          <div className={`vx-input ${stage === 1 ? 'vx-pressed' : ''}`}>
+            {stage >= 2 ? <span className="vx-sub">Ask anything…</span> : typed}
+            {stage < 2 && <span className="vx-caret" />}
           </div>
         </div>
       }
@@ -291,6 +406,14 @@ function GuardScreen() {
 }
 
 function InstallScreen() {
+  // 0 idle → 1 installing → 2 installed (icon appears)
+  const stage = useStage([1000, 2500]);
+  const logo = (size: number) => (
+    <svg viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="currentColor" strokeWidth="2.2">
+      <circle cx="11" cy="11" r="6" />
+      <path d="m20 20-4.2-4.2" />
+    </svg>
+  );
   return (
     <div className="vx-window" aria-hidden>
       <div className="vx-titlebar">
@@ -307,16 +430,12 @@ function InstallScreen() {
           <span className="vx-act vx-act-on">⊞</span>
           <span className="vx-act" />
           <span className="vx-act" />
+          {stage >= 2 && <span className="vx-act vx-act-new">{logo(14)}</span>}
         </div>
         <div className="vx-side">
           <div className="vx-search">projectlens</div>
           <div className="vx-ext vx-ext-on">
-            <span className="vx-ext-logo">
-              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.2">
-                <circle cx="11" cy="11" r="6" />
-                <path d="m20 20-4.2-4.2" />
-              </svg>
-            </span>
+            <span className="vx-ext-logo">{logo(18)}</span>
             <div>
               <b>ProjectLens AI</b>
               <div className="vx-sub">Code quality, security, progress and readiness</div>
@@ -326,18 +445,24 @@ function InstallScreen() {
         </div>
         <div className="vx-main vx-detail">
           <div className="vx-detail-head">
-            <span className="vx-ext-logo vx-ext-logo-lg">
-              <svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" strokeWidth="2.2">
-                <circle cx="11" cy="11" r="6" />
-                <path d="m20 20-4.2-4.2" />
-              </svg>
-            </span>
+            <span className="vx-ext-logo vx-ext-logo-lg">{logo(30)}</span>
             <div>
               <div className="vx-h">ProjectLens AI</div>
               <div className="vx-sub">Analyze your workspace locally. AI is optional.</div>
               <div className="vx-row">
-                <Btn primary>Install</Btn>
+                {stage === 0 && <Btn primary>Install</Btn>}
+                {stage === 1 && (
+                  <Btn primary pressed>
+                    Installing…
+                  </Btn>
+                )}
+                {stage === 2 && <Tag tone="good">✓ Installed</Tag>}
               </div>
+              {stage === 1 && (
+                <span className="vx-meter vx-meter-lg">
+                  <span className="vx-meter-fill vx-bg-accent vx-scanbar" style={{ width: '100%', animationDuration: '1.4s' }} />
+                </span>
+              )}
             </div>
           </div>
           <ul className="vx-list">
@@ -346,6 +471,7 @@ function InstallScreen() {
             <li>Optional AI insights with your own key</li>
             <li>Team cloud, API for PM tools, Prompt Guard</li>
           </ul>
+          {stage >= 2 && <div className="vx-toast vx-in">Click the ProjectLens icon in the Activity Bar to open the dashboard.</div>}
         </div>
       </div>
       <div className="vx-status">
