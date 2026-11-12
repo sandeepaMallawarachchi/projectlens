@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.1
+
+- **Prompt Guard:** catches more credentials in prompts:
+  - `.env`-style values without quotes (`ADMIN_KEY=…`).
+  - More credential names (passphrase, signing, salt, HMAC, cookie, `_SK`, and others) and provider names on their own (`OPENAI=…`, `STRIPE=…`).
+  - Keys mentioned in sentences ("the admin key is …", "use … as the key"), `Bearer`/`Basic` headers, and long random-looking tokens under any name.
+  - Ordinary words, commit hashes, UUIDs, empty values and `${VAR}` references are not flagged.
+
 ## 0.3.0
 
 - **Prompt Guard:** checks prompts sent to AI coding tools for secrets and sensitive data, on your computer, before they are sent.

@@ -2,7 +2,7 @@
   "name": "projectlens",
   "displayName": "ProjectLens AI",
   "description": "Analyze your workspace for technologies, code quality, security risks, implementation progress and production readiness — with optional AI review via Groq, OpenAI, Gemini or Claude.",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "publisher": "SandeepaMallawarachchi",
   "author": {
     "name": "Sandeepa Mallawarachchi"
