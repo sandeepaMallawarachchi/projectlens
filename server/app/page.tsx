@@ -3,6 +3,7 @@ import { env } from '@/lib/env';
 import { emailEnabled } from '@/lib/email';
 import { limits } from '@/lib/quotas';
 import { CodeBlock } from './components/CodeBlock';
+import { ExtensionTour } from './components/ExtensionTour';
 import { GitHubIcon, GitLabIcon, PlugIcon, SparklesIcon, VSCodeIcon } from './components/BrandIcons';
 import { NavLinks } from './components/NavLinks';
 import { ScrollEffects } from './components/ScrollEffects';
@@ -358,6 +359,27 @@ export async function POST(req: Request) {
                 <p>Create an API key and show scores, progress, risks and AI insights in your project-management tool - or trigger scans remotely.</p>
               </div>
             </div>
+          </div>
+        </section>
+
+        <section className="section" id="extension">
+          <div className="container">
+            <div className="section-head reveal">
+              <div className="kicker">The extension</div>
+              <h2>Using ProjectLens in VS Code</h2>
+              <p>
+                Everything starts in the editor. Scans run locally, AI is optional, and the cloud is only used when you sign in. Pick a step to see that screen.
+              </p>
+            </div>
+            <div className="reveal">
+              <ExtensionTour />
+            </div>
+            <p className="tour-foot reveal">
+              <a className="btn btn-primary" href={MARKETPLACE} target="_blank" rel="noreferrer">
+                <VSCodeIcon size={16} mono /> Install ProjectLens AI
+              </a>
+              <span>Illustrations use sample data.</span>
+            </p>
           </div>
         </section>
 

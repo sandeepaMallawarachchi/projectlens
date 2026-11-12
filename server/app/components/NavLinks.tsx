@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 
 const LINKS: [string, string][] = [
   ['how-it-works', 'How it works'],
+  ['extension', 'Extension'],
   ['get-started', 'Get started'],
   ['build-with-ai', 'Build with AI'],
   ['authentication', 'Authentication'],
