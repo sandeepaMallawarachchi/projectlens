@@ -57,7 +57,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<{ cont
     vscode.commands.registerCommand('projectlens.cloudLinkWorkspace', () => c.cloud.linkWorkspace()),
     vscode.commands.registerCommand('projectlens.cloudUpload', () => c.cloud.upload()),
     vscode.commands.registerCommand('projectlens.cloudScan', () => c.cloud.cloudScan()),
-    vscode.commands.registerCommand('projectlens.cloudOpen', () => openDashboard('cloud'))
+    vscode.commands.registerCommand('projectlens.cloudOpen', () => openDashboard('cloud')),
+    vscode.commands.registerCommand('projectlens.promptGuard.menu', () => c.promptGuard.menu()),
+    vscode.commands.registerCommand('projectlens.promptGuard.review', () => c.promptGuard.review('manual')),
+    vscode.commands.registerCommand('projectlens.promptGuard.chooseTools', () => c.promptGuard.chooseAndInstall()),
+    vscode.commands.registerCommand('projectlens.promptGuard.sanitize', () => c.promptGuard.sanitizeText()),
+    vscode.commands.registerCommand('projectlens.promptGuard.copySanitized', () => c.promptGuard.copySanitized())
   );
 
   await c.init();

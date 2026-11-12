@@ -1,6 +1,7 @@
 import type { ScanMode, ScanResult } from '@/engine/models/types';
 import type { AIInsight, AIProviderId } from '@/engine/models/ai';
 import type { ScanOverview } from '../dto';
+import type { AiTool, PromptEvent, PromptPolicy } from '@/engine/models/promptGuard';
 
 export type GitProviderId = 'github' | 'gitlab' | 'none' | 'local';
 export type Role = 'owner' | 'admin' | 'member';
@@ -124,7 +125,7 @@ export interface InsightRecord extends AIInsight {
   scanId: string;
 }
 
-export const API_SCOPES = ['read', 'scan', 'ai', 'admin'] as const;
+export const API_SCOPES = ['read', 'scan', 'ai', 'audit', 'admin'] as const;
 export type ApiScope = (typeof API_SCOPES)[number];
 
 export interface ApiKeyRecord {
@@ -138,6 +139,36 @@ export interface ApiKeyRecord {
   createdAt: string;
   lastUsedAt: string | null;
   revokedAt: string | null;
+}
+
+/** Prompt Guard state of one member: consent and the hooks installed on their machine. */
+export interface PromptGuardMemberRecord {
+  orgId: string;
+  userId: string;
+  /** Policy consent version the member accepted (null = not accepted). */
+  consentVersion: number | null;
+  acceptedAt: string | null;
+  /** Set when the member explicitly declined (optional mode). */
+  declinedAt: string | null;
+  enabled: boolean;
+  tools: AiTool[];
+  policyVersion: number | null;
+  clientVersion: string | null;
+  lastSeenAt: string | null;
+}
+
+/** Metadata about a flagged prompt. Never contains prompt text. */
+export interface PromptEventRecord extends PromptEvent {
+  orgId: string;
+  userId: string;
+  receivedAt: string;
+}
+
+export interface PromptEventFilter {
+  userId?: string;
+  since?: string;
+  tool?: AiTool;
+  limit: number;
 }
 
 type New<T, Auto extends keyof T> = Omit<T, Auto>;
@@ -214,4 +245,15 @@ export interface Store {
   listApiKeys(orgId: string): Promise<ApiKeyRecord[]>;
   touchApiKey(id: string): Promise<void>;
   revokeApiKey(orgId: string, id: string): Promise<void>;
+
+  // Prompt Guard
+  getPromptPolicy(orgId: string): Promise<PromptPolicy | null>;
+  savePromptPolicy(orgId: string, policy: PromptPolicy): Promise<PromptPolicy>;
+  getPromptGuardMember(orgId: string, userId: string): Promise<PromptGuardMemberRecord | null>;
+  upsertPromptGuardMember(m: PromptGuardMemberRecord): Promise<PromptGuardMemberRecord>;
+  listPromptGuardMembers(orgId: string): Promise<PromptGuardMemberRecord[]>;
+  /** Ignores events whose id already exists for the organization. Returns how many were stored. */
+  addPromptEvents(events: PromptEventRecord[]): Promise<number>;
+  /** Newest first. */
+  listPromptEvents(orgId: string, filter: PromptEventFilter): Promise<PromptEventRecord[]>;
 }

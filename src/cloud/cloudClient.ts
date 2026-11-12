@@ -1,3 +1,5 @@
+import type { AiTool, ConsentStatus, PromptEvent, PromptGuardView, PromptPolicy } from '../models/promptGuard';
+
 /**
  * Minimal typed client for the hosted ProjectLens API. Runs in the extension host only;
  * the session token never reaches the webview.
@@ -116,6 +118,37 @@ export class CloudClient {
   }
   me() {
     return this.request<{ user: CloudUser; organizations: CloudOrg[] }>('GET', '/me');
+  }
+
+  // Prompt Guard (organization-scoped session endpoints)
+  promptGuardPolicy(orgId: string) {
+    return this.request<{ organization: { id: string; name: string }; policy: PromptPolicy; me: { consent: ConsentStatus; acceptedAt: string | null; enabled: boolean; tools: AiTool[]; policyVersion: number | null } }>(
+      'GET',
+      `/orgs/${orgId}/prompt-guard/policy`
+    );
+  }
+  savePromptGuardPolicy(orgId: string, patch: Json) {
+    return this.request<PromptPolicy>('PUT', `/orgs/${orgId}/prompt-guard/policy`, patch);
+  }
+  promptGuardConsent(orgId: string, consentVersion: number, accept: boolean) {
+    return this.request<{ consent: ConsentStatus }>('POST', `/orgs/${orgId}/prompt-guard/consent`, { consentVersion, accept });
+  }
+  promptGuardHeartbeat(orgId: string, body: { enabled: boolean; tools: AiTool[]; policyVersion: number | null; clientVersion: string }) {
+    return this.request<unknown>('POST', `/orgs/${orgId}/prompt-guard/heartbeat`, body);
+  }
+  uploadPromptEvents(orgId: string, events: PromptEvent[]) {
+    return this.request<{ accepted: number; duplicates: number }>('POST', `/orgs/${orgId}/prompt-guard/events`, { events });
+  }
+  promptGuardEvents(orgId: string, limit = 50) {
+    return this.request<(PromptEvent & { userId: string })[]>('GET', `/orgs/${orgId}/prompt-guard/events?limit=${limit}`);
+  }
+  promptGuardMembers(orgId: string) {
+    return this.request<
+      { user: { id: string; name?: string | null; email?: string | null; githubLogin?: string | null }; role: string; consent: ConsentStatus; enabled: boolean; tools: AiTool[]; upToDate: boolean; lastSeenAt: string | null; last30Days: { blocked: number; warned: number; detected: number } }[]
+    >('GET', `/orgs/${orgId}/prompt-guard/members`);
+  }
+  promptGuardSummary(orgId: string) {
+    return this.request<NonNullable<PromptGuardView['summary']>>('GET', `/orgs/${orgId}/prompt-guard/summary`);
   }
 
   // Organizations

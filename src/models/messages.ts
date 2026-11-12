@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { AI_PROVIDER_IDS, AI_TASKS } from './ai';
 import type { AIState } from './ai';
 import type { CloudState } from './cloud';
+import { AI_TOOLS, BUILTIN_DETECTORS, PROMPT_ACTIONS, PROMPT_MODES, type PromptGuardView } from './promptGuard';
 import type { ScanHistoryEntry, ScanMode, ScanResult } from './types';
 
 /** Messages sent from the webview to the extension host. Every message is validated. */
@@ -59,7 +60,27 @@ export const webviewMessageSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('cloudScan'), projectId: z.string().uuid().optional() }),
   z.object({ type: z.literal('cloudUpload') }),
   z.object({ type: z.literal('cloudToggleAutoUpload'), enabled: z.boolean() }),
-  z.object({ type: z.literal('cloudOpenSettings') })
+  z.object({ type: z.literal('cloudOpenSettings') }),
+  z.object({ type: z.literal('pgRefresh') }),
+  z.object({ type: z.literal('pgReview') }),
+  z.object({ type: z.literal('pgInstall'), tools: z.array(z.enum(AI_TOOLS)).min(1) }),
+  z.object({ type: z.literal('pgUninstall'), tools: z.array(z.enum(AI_TOOLS)).min(1) }),
+  z.object({ type: z.literal('pgCopySanitized') }),
+  z.object({ type: z.literal('pgSanitizeText') }),
+  z.object({
+    type: z.literal('pgSavePolicy'),
+    patch: z.object({
+      mode: z.enum(PROMPT_MODES).optional(),
+      notice: z.string().max(2000).optional(),
+      builtin: z.partialRecord(z.enum(BUILTIN_DETECTORS.map((d) => d.id) as [string, ...string[]]), z.enum(PROMPT_ACTIONS)).optional(),
+      customRules: z
+        .array(z.object({ id: z.string().max(40).optional(), name: z.string().max(80), type: z.enum(['term', 'regex']), pattern: z.string().max(300), action: z.enum(['warn', 'redact', 'block']) }))
+        .max(100)
+        .optional(),
+      allowlist: z.array(z.string().max(300)).max(200).optional(),
+      webhookUrl: z.string().max(500).nullable().optional()
+    })
+  })
 ]);
 
 export type WebviewMessage = z.infer<typeof webviewMessageSchema>;
@@ -85,6 +106,7 @@ export interface AppState {
   history: ScanHistoryEntry[];
   ai: AIState;
   cloud: CloudState;
+  promptGuard: PromptGuardView;
   settings: { gitleaksEnabled: boolean; diagnosticsEnabled: boolean };
 }
 

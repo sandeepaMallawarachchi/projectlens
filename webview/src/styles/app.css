@@ -1701,3 +1701,81 @@ button.stat:hover {
     grid-template-columns: repeat(2, minmax(64px, 1fr));
   }
 }
+
+/* ── Prompt Guard ─────────────────────────────────────────── */
+textarea.input {
+  width: 100%;
+  padding: 6px 8px;
+  background: var(--vscode-input-background);
+  color: var(--vscode-input-foreground);
+  border: 1px solid var(--vscode-input-border, var(--border));
+  border-radius: 2px;
+  font: inherit;
+  resize: vertical;
+}
+.pg-status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px 28px;
+  margin-bottom: 10px;
+}
+.pg-status > div {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.pg-notice {
+  white-space: pre-wrap;
+  padding: 8px 10px;
+  border-left: 2px solid var(--vscode-textLink-foreground);
+  background: var(--vscode-textBlockQuote-background, transparent);
+}
+.pg-rules {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0;
+  display: grid;
+  gap: 4px;
+}
+.pg-rules li,
+.pg-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.pg-form {
+  display: grid;
+  gap: 14px;
+  max-width: 760px;
+}
+.pg-form label {
+  display: grid;
+  gap: 4px;
+}
+.pg-form label > span:first-child,
+.pg-form legend {
+  font-weight: 600;
+}
+.pg-form fieldset {
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 8px 10px 10px;
+  display: grid;
+  gap: 6px;
+}
+.pg-form input.input {
+  width: 100%;
+}
+.pg-rule {
+  display: grid;
+  grid-template-columns: minmax(90px, 1fr) auto minmax(120px, 2fr) auto auto;
+}
+.error-text {
+  color: var(--vscode-errorForeground);
+}
+@media (max-width: 560px) {
+  .pg-rule {
+    grid-template-columns: 1fr 1fr;
+  }
+}

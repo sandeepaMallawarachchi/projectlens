@@ -65,6 +65,17 @@ const GROUPS: { title: string; note: string; endpoints: Endpoint[] }[] = [
     ]
   },
   {
+    title: 'Prompt Guard',
+    note: 'Sensitive-data policy for AI coding tools',
+    endpoints: [
+      { method: 'GET', path: '/prompt-guard/policy', scope: 'read', description: 'Policy: mode (off | optional | required), notice, detectors, custom rules, allowlist' },
+      { method: 'PUT', path: '/prompt-guard/policy', scope: 'admin', description: 'Update any subset. Changing mode or notice asks members to accept again' },
+      { method: 'GET', path: '/prompt-guard/events', scope: 'audit', description: 'Flagged prompts, metadata only (never prompt text). Filters: since, userId, tool' },
+      { method: 'GET', path: '/prompt-guard/summary', scope: 'audit', description: 'Totals by rule, tool and category, and member consent. ?days=1-90' },
+      { method: 'GET', path: '/prompt-guard/members', scope: 'audit', description: 'Consent status and protected AI tools per member' }
+    ]
+  },
+  {
     title: 'Accounts & teams',
     note: 'user sessions (used by the VS Code extension)',
     endpoints: [
@@ -168,7 +179,7 @@ ProjectLens analyzes GitHub/GitLab projects and reports code quality, security, 
 
 ## Connection
 - Base URL: ${base}  (env: PROJECTLENS_API_URL)
-- Auth header: Authorization: Bearer <PROJECTLENS_API_KEY>  (an organization API key "plk_…" with scopes read, scan, ai)
+- Auth header: Authorization: Bearer <PROJECTLENS_API_KEY>  (an organization API key "plk_…" with scopes read, scan, ai; add audit and admin only if building the Prompt Guard screens)
 - Call the API ONLY from server-side code (API routes, server actions, jobs). Never expose the key to the browser.
 - Responses are JSON wrapped as { "data": … }. Errors: { "error": { "code", "message", "details" } } with the HTTP status.
 - Full OpenAPI 3.1 spec: ${base}/openapi.json
@@ -194,6 +205,15 @@ ProjectLens analyzes GitHub/GitLab projects and reports code quality, security, 
 - POST /scans/{scanId}/insights { task: "projectAssessment" | "architectureSummary" | "improvements" | "securityConcerns" | "incompletePatterns" } → 201 { analysis: { summary, observations[], recommendations[] }, fileUris } - synchronous, 10–120 s; 400 ai_not_configured if the organization has no AI key
 - GET /usage → plan limits and usage
 
+## Prompt Guard (optional: sensitive-data policy for AI coding tools)
+Team members' prompts to Claude Code, Codex, Cursor, GitHub Copilot and Antigravity are checked on their own computers by the ProjectLens extension. Prompt text is never uploaded; the API only holds the policy and metadata events.
+- GET /prompt-guard/policy (scope read) → { mode: "off"|"optional"|"required", notice, consentVersion, builtin: { secrets, "pii.card", "pii.email", "pii.phone": "off"|"warn"|"redact"|"block" }, customRules: [{ id, name, type: "term"|"regex", pattern, action }], allowlist: string[], webhookUrl, version }
+- PUT /prompt-guard/policy (scope admin) with any subset of those fields. Changing mode or notice makes members accept again. "required" withholds organization projects from members until they accept.
+- GET /prompt-guard/events?since=&userId=&tool=&limit= (scope audit) → [{ id, userId, tool, action: "blocked"|"warned"|"detected", ruleIds, categories, project, occurredAt }]. "detected" = sent anyway (Copilot hooks cannot block).
+- GET /prompt-guard/summary?days=30 and GET /prompt-guard/members (scope audit) for dashboards.
+- Optional webhook: set webhookUrl in the policy to receive signed "prompt.flagged" events (same signature scheme as scan webhooks).
+Show events as compliance metadata: never imply that ProjectLens has the prompt text.
+
 ## overview fields (latestScan.overview)
 scores.{quality,security,implementation,readiness}.{score,grade,verdict}; findings.{total,bySeverity,needsReview}; progress.{label,estimate,modules[{name,status,completion}]}; technologies[]; topRisks[{title,severity,file,line,url}]; recommendedActions[{title,detail,priority}]
 
@@ -206,6 +226,7 @@ Send callbackUrl (HTTPS) when triggering a scan. ProjectLens POSTs { event: "sca
 3. A project health view: scores, progress estimate and modules, top risks linking to code, technologies, and a trend chart.
 4. An "Analyze" action that triggers a scan and handles 202/200(cached)/409/429.
 5. Optional: AI insights on demand, labelled as AI-generated, rendered as plain text.
+6. Optional: a Prompt Guard settings screen (policy editor) and a compliance view of flagged-prompt events and member coverage.
 Follow this codebase's existing conventions, UI components and patterns.`;
 
   const webhookSample = `import { createHmac, timingSafeEqual } from 'node:crypto';
@@ -462,7 +483,7 @@ export async function POST(req: Request) {
                     <td>Integrations (PM tools, scripts, CI)</td>
                     <td>
                       One organization, limited to its scopes: <span className="scope">read</span> · <span className="scope">scan</span> · <span className="scope">ai</span> ·{' '}
-                      <span className="scope">admin</span> (manage keys)
+                      <span className="scope">audit</span> (Prompt Guard reports) · <span className="scope">admin</span> (manage keys and policies)
                     </td>
                   </tr>
                   <tr>

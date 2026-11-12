@@ -155,6 +155,31 @@
         "category": "ProjectLens"
       },
       {
+        "command": "projectlens.promptGuard.menu",
+        "title": "Prompt Guard",
+        "category": "ProjectLens"
+      },
+      {
+        "command": "projectlens.promptGuard.review",
+        "title": "Prompt Guard: Review Organization Policy",
+        "category": "ProjectLens"
+      },
+      {
+        "command": "projectlens.promptGuard.chooseTools",
+        "title": "Prompt Guard: Choose Protected AI Tools",
+        "category": "ProjectLens"
+      },
+      {
+        "command": "projectlens.promptGuard.sanitize",
+        "title": "Prompt Guard: Sanitize Selection or Clipboard",
+        "category": "ProjectLens"
+      },
+      {
+        "command": "projectlens.promptGuard.copySanitized",
+        "title": "Copy Sanitized Prompt",
+        "category": "ProjectLens"
+      },
+      {
         "command": "projectlens.cloudOpen",
         "title": "Open ProjectLens Cloud",
         "category": "ProjectLens"

@@ -1,6 +1,7 @@
 import { env } from './env';
 import { HttpError } from './http';
 import { safeEqual, sha256 } from './crypto';
+import { assertPromptGuardConsent } from './prompt-guard';
 import { getStore, type ApiScope, type Role, type SessionRecord, type UserRecord } from './store';
 
 export interface Principal {
@@ -14,8 +15,8 @@ export interface Principal {
 }
 
 const ROLE_SCOPES: Record<Role, ApiScope[]> = {
-  owner: ['read', 'scan', 'ai', 'admin'],
-  admin: ['read', 'scan', 'ai', 'admin'],
+  owner: ['read', 'scan', 'ai', 'audit', 'admin'],
+  admin: ['read', 'scan', 'ai', 'audit', 'admin'],
   member: ['read', 'scan', 'ai']
 };
 
@@ -55,9 +56,10 @@ export async function authenticateUser(req: Request): Promise<{ session: Session
  * - `pls_…` user session (extension): organization from the `X-ProjectLens-Org` header, or the user's first organization; scopes from the member role.
  * - `plk_…` API key: the key's organization and scopes.
  * - The platform admin key (PROJECTLENS_ADMIN_KEY): any organization given in `X-ProjectLens-Org` (operations only).
- * The `admin` scope means organization administration (keys, members, AI keys).
+ * The `admin` scope means organization administration (keys, members, AI keys); `audit` reads Prompt Guard reports.
+ * When the organization requires Prompt Guard, user sessions must have accepted the current policy.
  */
-export async function authenticate(req: Request, required: ApiScope): Promise<Principal> {
+export async function authenticate(req: Request, required: ApiScope, opts: { skipPromptGuard?: boolean } = {}): Promise<Principal> {
   const token = bearer(req);
   const store = getStore();
   const orgHeader = req.headers.get('x-projectlens-org');
@@ -71,6 +73,9 @@ export async function authenticate(req: Request, required: ApiScope): Promise<Pr
       throw new HttpError(orgHeader ? 403 : 400, orgHeader ? 'forbidden' : 'no_organization', orgHeader ? 'You are not a member of this organization' : 'Create or join an organization first');
     }
     principal = { kind: 'session', actor: `user:${user.githubLogin ?? user.email ?? user.id}`, userId: user.id, orgId: membership.orgId, role: membership.role, scopes: ROLE_SCOPES[membership.role] };
+    if (!opts.skipPromptGuard) {
+      await assertPromptGuardConsent(membership.orgId, user.id);
+    }
   } else if (token.startsWith('plk_')) {
     const key = await store.findApiKeyByHash(sha256(token));
     if (!key || key.revokedAt) {

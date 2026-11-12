@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+- **Prompt Guard:** checks prompts sent to AI coding tools for secrets and sensitive data, on your computer, before they are sent.
+  - Supported tools: Claude Code, Codex and Cursor (blocked before sending), Antigravity (blocked before the model call) and GitHub Copilot (alert right after sending; Copilot hooks cannot block).
+  - Detects API keys, tokens, private keys and connection strings, payment card numbers (Luhn-checked), email addresses and phone numbers, plus the organization's own terms and regular expressions, with an allowlist.
+  - Blocked prompts show a sanitized copy to resend. Also available: "Copy Sanitized Prompt" and "Sanitize Selection or Clipboard".
+  - Organization owners and admins set the policy from the new **Prompt Guard** dashboard tab or the API. Each policy is off, optional or required, and members see the organization's notice and rules before they accept.
+  - Prompt text never leaves the computer. The organization sees only the matched rule, the tool, the project folder name and the time.
+  - Hooks are added to each tool's user settings with a backup, run offline, and let prompts through if they ever fail.
+- New `audit` API key scope for Prompt Guard reports.
+- **Cloud API:** Prompt Guard endpoints. Run `supabase/migrations/003_prompt_guard.sql` on existing databases.
+
 ## 0.2.1
 
 - Increased the default file size limit for local scans from 512 KB to 10 MB. Existing custom `projectlens.scan.maxFileSizeKb` values are preserved.

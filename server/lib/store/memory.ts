@@ -12,11 +12,15 @@ import type {
   Role,
   ScanRecord,
   ScanSource,
+  PromptEventFilter,
+  PromptEventRecord,
+  PromptGuardMemberRecord,
   SessionRecord,
   Store,
   UserRecord
 } from './types';
 import { HttpError, notFound } from '../http';
+import type { PromptPolicy } from '@/engine/models/promptGuard';
 
 const now = () => new Date().toISOString();
 const byNewest = <T extends { createdAt: string }>(a: T, b: T) => b.createdAt.localeCompare(a.createdAt);
@@ -34,6 +38,9 @@ export class MemoryStore implements Store {
   scans = new Map<string, ScanRecord>();
   insights: InsightRecord[] = [];
   keys = new Map<string, ApiKeyRecord>();
+  promptPolicies = new Map<string, PromptPolicy>();
+  promptMembers: PromptGuardMemberRecord[] = [];
+  promptEvents: PromptEventRecord[] = [];
   private seq = 0;
 
   /** Monotonic timestamps keep "newest first" ordering deterministic within one millisecond. */
@@ -314,5 +321,43 @@ export class MemoryStore implements Store {
       throw notFound('API key');
     }
     k.revokedAt = now();
+  }
+
+  // Prompt Guard
+  async getPromptPolicy(orgId: string) {
+    const p = this.promptPolicies.get(orgId);
+    return p ? structuredClone(p) : null;
+  }
+  async savePromptPolicy(orgId: string, policy: PromptPolicy) {
+    this.promptPolicies.set(orgId, structuredClone(policy));
+    return policy;
+  }
+  async getPromptGuardMember(orgId: string, userId: string) {
+    const m = this.promptMembers.find((x) => x.orgId === orgId && x.userId === userId);
+    return m ? { ...m } : null;
+  }
+  async upsertPromptGuardMember(m: PromptGuardMemberRecord) {
+    this.promptMembers = this.promptMembers.filter((x) => !(x.orgId === m.orgId && x.userId === m.userId));
+    this.promptMembers.push({ ...m });
+    return m;
+  }
+  async listPromptGuardMembers(orgId: string) {
+    return this.promptMembers.filter((x) => x.orgId === orgId).map((x) => ({ ...x }));
+  }
+  async addPromptEvents(events: PromptEventRecord[]) {
+    let n = 0;
+    for (const e of events) {
+      if (!this.promptEvents.some((x) => x.orgId === e.orgId && x.id === e.id)) {
+        this.promptEvents.push({ ...e });
+        n++;
+      }
+    }
+    return n;
+  }
+  async listPromptEvents(orgId: string, f: PromptEventFilter) {
+    return this.promptEvents
+      .filter((e) => e.orgId === orgId && (!f.userId || e.userId === f.userId) && (!f.since || e.occurredAt >= f.since) && (!f.tool || e.tool === f.tool))
+      .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt))
+      .slice(0, f.limit);
   }
 }

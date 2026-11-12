@@ -95,6 +95,29 @@ The API's source and deployment guide are in [`server/`](server/README.md). Comm
 
 Settings: `projectlens.cloud.apiUrl` (default `https://projectlensai.vercel.app/api/v1`) and `projectlens.cloud.autoUpload`.
 
+## Prompt Guard
+
+Prompt Guard stops secrets and sensitive data from being sent to AI coding tools. The organization's owner or admin sets the policy, in the **Prompt Guard** dashboard tab or through the API (`PUT /prompt-guard/policy`), and the extension enforces it on each member's computer.
+
+| Tool | Hook | What happens to a sensitive prompt |
+|---|---|---|
+| Claude Code | `UserPromptSubmit` in `~/.claude/settings.json` | Blocked, with a sanitized copy to resend |
+| Codex | `UserPromptSubmit` in `~/.codex/hooks.json` | Blocked. Codex asks you to trust new hooks once (`/hooks`) |
+| Cursor | `beforeSubmitPrompt` in `~/.cursor/hooks.json` | Blocked |
+| Antigravity | `PreInvocation` in `~/.gemini/config/hooks.json` | Stopped before the model call |
+| GitHub Copilot | `userPromptSubmitted` in `~/.copilot/hooks/` | Copilot hooks cannot block, so you get an alert right after sending and should rotate the secret |
+
+- **Detects:** API keys, tokens, private keys and connection strings (the same rules as the security scan), payment card numbers (Luhn-checked), email addresses, phone numbers, and the organization's own terms and regular expressions. An allowlist prevents false positives. Each rule can be off, warn, block, or block with a sanitized copy.
+- **Consent:** the policy is off, optional or required. Members see the organization's notice and rules and accept before anything is checked. In required mode, organization projects stay unavailable until the member accepts.
+- **Privacy:** prompts are checked offline and never uploaded. The organization sees only the rule that matched, the tool, the project folder name and the time.
+- **Safety:** hooks are added to each tool's user settings next to your existing hooks, with a backup (`*.projectlens-backup`). Files that can't be parsed are left unchanged. The hook lets prompts through if it ever fails. The runtime lives in `~/.projectlens/prompt-guard`.
+- **Commands:**
+  - `ProjectLens: Prompt Guard` (status-bar menu)
+  - `Prompt Guard: Review Organization Policy`
+  - `Prompt Guard: Choose Protected AI Tools`
+  - `Prompt Guard: Sanitize Selection or Clipboard`
+  - `Copy Sanitized Prompt`
+
 ## Commands
 
 | Command | Description |

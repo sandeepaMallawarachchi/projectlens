@@ -20,6 +20,7 @@ import { REQUIREMENTS_FILE, REQUIREMENTS_TEMPLATE } from './analyzers/progress/r
 import { getConfig, modelFor, modelSettingKey } from './config';
 import { isInside } from './utils/paths';
 import { CloudController } from './cloud/cloudController';
+import { PromptGuardController } from './promptGuard/promptGuardController';
 
 export interface WebviewSink {
   postMessage(message: HostMessage): Thenable<boolean>;
@@ -41,6 +42,7 @@ export class ProjectLensController implements vscode.Disposable {
   private readonly state: AppState;
   private openDashboardHandler: ((tab?: string) => void) | null = null;
   readonly cloud: CloudController;
+  readonly promptGuard: PromptGuardController;
 
   constructor(
     private readonly context: vscode.ExtensionContext,
@@ -80,6 +82,7 @@ export class ProjectLensController implements vscode.Disposable {
         sessionUsage: { promptTokens: 0, completionTokens: 0, totalTokens: 0, requests: 0 }
       },
       cloud: undefined as unknown as AppState['cloud'],
+      promptGuard: undefined as unknown as AppState['promptGuard'],
       settings: { gitleaksEnabled: cfg.gitleaks.enabled, diagnosticsEnabled: cfg.diagnostics.enabled }
     };
     this.cloud = new CloudController({
@@ -87,14 +90,25 @@ export class ProjectLensController implements vscode.Disposable {
       broadcast: () => this.broadcast(),
       log: (m) => this.log(m),
       latestResult: () => this.state.result,
-      workspaceRoot: () => this.workspaceRoots()[0] ?? null
+      workspaceRoot: () => this.workspaceRoots()[0] ?? null,
+      onOrg: () => this.promptGuard.sync(true)
     });
-    // Shared object: cloud state mutations are visible in the next broadcast.
+    this.promptGuard = new PromptGuardController({
+      context,
+      broadcast: () => this.broadcast(),
+      log: (m) => this.log(m),
+      org: () => this.cloud.promptGuardContext(),
+      openDashboard: () => this.openDashboardHandler?.('promptGuard'),
+      refreshCloud: () => this.cloud.refresh(true)
+    });
+    // Shared objects: state mutations are visible in the next broadcast.
     this.state.cloud = this.cloud.state;
+    this.state.promptGuard = this.promptGuard.state;
   }
 
   async init(): Promise<void> {
     await this.refreshAiState();
+    this.promptGuard.init();
     void this.cloud.init();
     this.state.result = await this.store.loadLatest();
     if (this.state.result) {
@@ -298,6 +312,20 @@ export class ProjectLensController implements vscode.Disposable {
         return this.cloud.upload();
       case 'cloudToggleAutoUpload':
         return this.cloud.setAutoUpload(msg.enabled);
+      case 'pgRefresh':
+        return this.promptGuard.sync();
+      case 'pgReview':
+        return this.promptGuard.review('manual');
+      case 'pgInstall':
+        return this.promptGuard.install(msg.tools);
+      case 'pgUninstall':
+        return this.promptGuard.uninstall(msg.tools);
+      case 'pgCopySanitized':
+        return this.promptGuard.copySanitized();
+      case 'pgSanitizeText':
+        return this.promptGuard.sanitizeText();
+      case 'pgSavePolicy':
+        return this.promptGuard.savePolicy(msg.patch);
       case 'cloudOpenSettings':
         await vscode.commands.executeCommand('workbench.action.openSettings', 'projectlens.cloud');
         return;
@@ -810,6 +838,7 @@ export class ProjectLensController implements vscode.Disposable {
     this.scanAbort?.abort();
     this.aiAbort?.abort();
     this.diagnostics.dispose();
+    this.promptGuard.dispose();
     this.output.dispose();
   }
 }

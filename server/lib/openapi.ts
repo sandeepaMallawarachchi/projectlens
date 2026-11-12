@@ -17,7 +17,7 @@ export function openApiSpec(origin: string) {
       title: 'ProjectLens API',
       version: '0.2.0',
       description:
-        'Hosted, multi-tenant analysis of GitHub/GitLab repositories: technologies, code quality, security, implementation progress, production readiness and AI insights (with each organization\'s own AI key). Authenticate with `Authorization: Bearer <token>`: an organization API key (`plk_…`, scopes read/scan/ai/admin) for integrations, or a user session (`pls_…`, from GitHub or email sign-in) with optional `X-ProjectLens-Org` to select the organization.'
+        'Hosted, multi-tenant analysis of GitHub/GitLab repositories: technologies, code quality, security, implementation progress, production readiness and AI insights (with each organization\'s own AI key). Authenticate with `Authorization: Bearer <token>`: an organization API key (`plk_…`, scopes read/scan/ai/audit/admin) for integrations, or a user session (`pls_…`, from GitHub or email sign-in) with optional `X-ProjectLens-Org` to select the organization.'
     },
     servers: [{ url: `${origin}/api/v1` }],
     security: [{ bearer: [] }],
@@ -25,6 +25,42 @@ export function openApiSpec(origin: string) {
       securitySchemes: { bearer: { type: 'http', scheme: 'bearer', description: 'API key (plk_…) or the admin key' } },
       schemas: {
         ErrorResponse: { type: 'object', properties: { error: { type: 'object', properties: { code: { type: 'string' }, message: { type: 'string' }, details: {} } } } },
+        PromptPolicy: {
+          type: 'object',
+          properties: {
+            version: { type: 'integer' },
+            mode: { type: 'string', enum: ['off', 'optional', 'required'], description: '`optional`: members choose to opt in; `required`: members must accept before using organization data' },
+            notice: { type: 'string', description: 'Shown to members before they accept' },
+            consentVersion: { type: 'integer' },
+            builtin: { type: 'object', description: 'Detector id → action. Detectors: secrets, pii.card, pii.email, pii.phone', additionalProperties: { type: 'string', enum: ['off', 'warn', 'redact', 'block'] } },
+            customRules: { type: 'array', items: { type: 'object', properties: { id: { type: 'string' }, name: { type: 'string' }, type: { type: 'string', enum: ['term', 'regex'] }, pattern: { type: 'string' }, action: { type: 'string', enum: ['warn', 'redact', 'block'] } } } },
+            allowlist: { type: 'array', items: { type: 'string' } },
+            webhookUrl: { type: ['string', 'null'], description: 'Receives `prompt.flagged` (blocked and detected events)' },
+            updatedAt: { type: ['string', 'null'] },
+            updatedBy: { type: ['string', 'null'] }
+          }
+        },
+        PromptPolicyUpdate: {
+          type: 'object',
+          description: 'Any subset of: mode, notice, builtin, customRules, allowlist, webhookUrl',
+          properties: { mode: { type: 'string', enum: ['off', 'optional', 'required'] }, notice: { type: 'string' }, builtin: { type: 'object' }, customRules: { type: 'array', items: { type: 'object' } }, allowlist: { type: 'array', items: { type: 'string' } }, webhookUrl: { type: ['string', 'null'] } }
+        },
+        PromptEvent: {
+          type: 'object',
+          description: 'Metadata about a flagged prompt. Prompt text is never collected.',
+          properties: {
+            id: { type: 'string' },
+            userId: { type: 'string' },
+            tool: { type: 'string', enum: ['claude', 'codex', 'cursor', 'copilot', 'antigravity'] },
+            action: { type: 'string', enum: ['blocked', 'warned', 'detected'], description: '`detected`: the tool cannot block (GitHub Copilot)' },
+            ruleIds: { type: 'array', items: { type: 'string' } },
+            categories: { type: 'array', items: { type: 'string' } },
+            project: { type: ['string', 'null'], description: 'Workspace folder name' },
+            policyVersion: { type: 'integer' },
+            occurredAt: { type: 'string', format: 'date-time' },
+            receivedAt: { type: 'string', format: 'date-time' }
+          }
+        },
         CreateProject: {
           type: 'object',
           required: ['name', 'provider', 'repository'],
@@ -157,7 +193,7 @@ export function openApiSpec(origin: string) {
         get: { summary: 'List API keys (scope: admin)', responses: { '200': ok(data({ type: 'array', items: { type: 'object' } })), ...errorResponses } },
         post: {
           summary: 'Create an API key (scope: admin). The key is shown once.',
-          requestBody: { content: { 'application/json': { schema: { type: 'object', properties: { name: { type: 'string' }, scopes: { type: 'array', items: { type: 'string', enum: ['read', 'scan', 'ai', 'admin'] } } } } } } },
+          requestBody: { content: { 'application/json': { schema: { type: 'object', properties: { name: { type: 'string' }, scopes: { type: 'array', items: { type: 'string', enum: ['read', 'scan', 'ai', 'audit', 'admin'] } } } } } } },
           responses: { '201': ok(data({ type: 'object' }), 'Created'), ...errorResponses }
         }
       },
@@ -188,6 +224,24 @@ export function openApiSpec(origin: string) {
       '/orgs/{orgId}/ai-keys/{provider}': { put: { summary: 'Set the organization\'s own AI key (admin; validated, encrypted)', responses: { '200': ok(data({ type: 'object' })) } }, delete: { summary: 'Remove the key (admin)', responses: { '204': { description: 'Removed' } } } },
       '/orgs/{orgId}/ai-settings': { put: { summary: 'Default AI provider/model (admin)', responses: { '200': ok(data({ type: 'object' })) } } },
       '/orgs/{orgId}/usage': { get: { summary: 'Usage and plan limits', responses: { '200': ok(data({ type: 'object' })) } } },
+      '/prompt-guard/policy': {
+        get: { summary: 'Prompt Guard policy (scope: read)', tags: ['Prompt Guard'], responses: { '200': ok(data(ref('PromptPolicy'))), ...errorResponses } },
+        put: {
+          summary: 'Update the Prompt Guard policy (scope: admin). Partial update; changing mode or notice asks members to accept again.',
+          tags: ['Prompt Guard'],
+          requestBody: { content: { 'application/json': { schema: ref('PromptPolicyUpdate') } } },
+          responses: { '200': ok(data(ref('PromptPolicy'))), ...errorResponses }
+        }
+      },
+      '/prompt-guard/events': { get: { summary: 'Flagged-prompt events, metadata only (scope: audit)', tags: ['Prompt Guard'], parameters: [{ name: 'since', in: 'query', schema: { type: 'string', format: 'date-time' } }, { name: 'userId', in: 'query', schema: { type: 'string' } }, { name: 'tool', in: 'query', schema: { type: 'string', enum: ['claude', 'codex', 'cursor', 'copilot', 'antigravity'] } }, { name: 'limit', in: 'query', schema: { type: 'integer', maximum: 500 } }], responses: { '200': ok(data({ type: 'array', items: ref('PromptEvent') })), ...errorResponses } } },
+      '/prompt-guard/summary': { get: { summary: 'Totals by rule, tool, category and member consent (scope: audit)', tags: ['Prompt Guard'], parameters: [{ name: 'days', in: 'query', schema: { type: 'integer', maximum: 90 } }], responses: { '200': ok(data({ type: 'object' })), ...errorResponses } } },
+      '/prompt-guard/members': { get: { summary: 'Consent and installed hooks per member (scope: audit)', tags: ['Prompt Guard'], responses: { '200': ok(data({ type: 'array', items: { type: 'object' } })), ...errorResponses } } },
+      '/orgs/{orgId}/prompt-guard/policy': { parameters: [{ name: 'orgId', in: 'path', required: true, schema: { type: 'string' } }], get: { summary: 'Policy and the caller\'s consent (session)', tags: ['Prompt Guard'], responses: { '200': ok(data({ type: 'object' })) } }, put: { summary: 'Update the policy (admin session)', tags: ['Prompt Guard'], requestBody: { content: { 'application/json': { schema: ref('PromptPolicyUpdate') } } }, responses: { '200': ok(data(ref('PromptPolicy'))) } } },
+      '/orgs/{orgId}/prompt-guard/consent': { parameters: [{ name: 'orgId', in: 'path', required: true, schema: { type: 'string' } }], post: { summary: 'Accept or decline the policy: `{ consentVersion, accept }` (session)', tags: ['Prompt Guard'], responses: { '200': ok(data({ type: 'object' })) } } },
+      '/orgs/{orgId}/prompt-guard/heartbeat': { parameters: [{ name: 'orgId', in: 'path', required: true, schema: { type: 'string' } }], post: { summary: 'Report installed hooks: `{ enabled, tools, policyVersion, clientVersion }` (session)', tags: ['Prompt Guard'], responses: { '200': ok(data({ type: 'object' })) } } },
+      '/orgs/{orgId}/prompt-guard/events': { parameters: [{ name: 'orgId', in: 'path', required: true, schema: { type: 'string' } }], get: { summary: 'Events (admins: everyone; members: their own)', tags: ['Prompt Guard'], responses: { '200': ok(data({ type: 'array', items: ref('PromptEvent') })) } }, post: { summary: 'Upload events from the extension: `{ events: PromptEvent[] }` (session)', tags: ['Prompt Guard'], responses: { '201': ok(data({ type: 'object' }), 'Stored') } } },
+      '/orgs/{orgId}/prompt-guard/members': { parameters: [{ name: 'orgId', in: 'path', required: true, schema: { type: 'string' } }], get: { summary: 'Consent and hooks per member (admin session)', tags: ['Prompt Guard'], responses: { '200': ok(data({ type: 'array', items: { type: 'object' } })) } } },
+      '/orgs/{orgId}/prompt-guard/summary': { parameters: [{ name: 'orgId', in: 'path', required: true, schema: { type: 'string' } }], get: { summary: 'Totals (admin session)', tags: ['Prompt Guard'], responses: { '200': ok(data({ type: 'object' })) } } },
       '/keys/{keyId}': { delete: { summary: 'Revoke an API key (scope: admin)', parameters: [{ name: 'keyId', in: 'path', required: true, schema: { type: 'string' } }], responses: { '204': { description: 'Revoked' }, ...errorResponses } } }
     }
   };

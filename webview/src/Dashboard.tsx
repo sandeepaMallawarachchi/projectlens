@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Activity, BrainCircuit, Boxes, Cloud, Code2, FileBarChart, Layers, Play, ShieldCheck, Sparkles, Square, Zap, Settings, RefreshCw } from 'lucide-react';
+import { Activity, BrainCircuit, Boxes, Cloud, Code2, FileBarChart, Layers, MessageSquareLock, Play, ShieldCheck, Sparkles, Square, Zap, Settings, RefreshCw } from 'lucide-react';
 import { useHostState } from './hooks/useHostState';
 import { post, getPersisted, setPersisted } from './vscode';
 import { Button, EmptyState, Skeleton, Callout } from './components/ui';
@@ -11,6 +11,7 @@ import { QualityPage, SecurityPage } from './pages/FindingsPages';
 import { AIInsights } from './pages/AIInsights';
 import { Reports } from './pages/Reports';
 import { CloudPage } from './pages/Cloud';
+import { PromptGuardPage } from './pages/PromptGuard';
 import { relativeTime } from './format';
 
 const TABS = [
@@ -21,6 +22,7 @@ const TABS = [
   { id: 'security', label: 'Security', icon: ShieldCheck },
   { id: 'ai', label: 'AI Insights', icon: BrainCircuit },
   { id: 'cloud', label: 'Cloud', icon: Cloud },
+  { id: 'promptGuard', label: 'Prompt Guard', icon: MessageSquareLock },
   { id: 'reports', label: 'Reports', icon: FileBarChart }
 ] as const;
 type TabId = (typeof TABS)[number]['id'];
@@ -59,6 +61,9 @@ export function Dashboard({ initialTab }: { initialTab: string }) {
     }
     if (tab === 'cloud') {
       return <CloudPage state={state} />;
+    }
+    if (tab === 'promptGuard') {
+      return <PromptGuardPage state={state} />;
     }
     if (tab === 'reports') {
       return <Reports result={result} history={state.history} />;

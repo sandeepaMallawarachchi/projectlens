@@ -19,6 +19,8 @@ export interface CloudDeps {
   log: (message: string) => void;
   latestResult: () => ScanResult | null;
   workspaceRoot: () => string | null;
+  /** Runs when the organization changes or loads (Prompt Guard policy and consent come first). */
+  onOrg?: () => Promise<void>;
 }
 
 interface LinkInfo {
@@ -58,6 +60,15 @@ export class CloudController {
 
   private get isAdmin(): boolean {
     return this.role === 'owner' || this.role === 'admin';
+  }
+
+  /** Organization context for Prompt Guard (null when signed out or no organization). */
+  promptGuardContext(): { client: CloudClient; orgId: string; orgName: string; isAdmin: boolean } | null {
+    const org = this.state.organizations.find((o) => o.id === this.state.currentOrgId);
+    if (!this.token || !org) {
+      return null;
+    }
+    return { client: this.client(), orgId: org.id, orgName: org.name, isAdmin: this.isAdmin };
   }
 
   private link(): LinkInfo | null {
@@ -141,16 +152,30 @@ export class CloudController {
     if (!orgId) {
       return;
     }
+    await this.deps.onOrg?.().catch((err) => this.deps.log(`Prompt Guard: ${err instanceof Error ? err.message : err}`));
     const c = this.client();
     const admin = this.isAdmin;
+    // Organizations that require Prompt Guard withhold project data until the member accepts.
+    let consentBlocked = false;
+    const guarded = <T>(p: Promise<T>, fallback: T) =>
+      p.catch((err: unknown) => {
+        if (err instanceof CloudError && err.code === 'prompt_guard_consent_required') {
+          consentBlocked = true;
+          return fallback;
+        }
+        throw err;
+      });
     const [members, invitations, apiKeys, aiKeys, projects, usage] = await Promise.all([
       c.members(orgId),
       admin ? c.invitations(orgId) : Promise.resolve([]),
-      admin ? c.apiKeys() : Promise.resolve([]),
+      admin ? guarded(c.apiKeys(), []) : Promise.resolve([]),
       c.aiKeys(orgId),
-      c.projects(),
+      guarded(c.projects(), []),
       c.usage(orgId)
     ]);
+    if (consentBlocked) {
+      this.state.error = 'This organization requires Prompt Guard. Review the policy in the Prompt Guard section to load projects.';
+    }
     this.state.members = members.map((m) => ({ userId: m.user.id, name: m.user.name, email: m.user.email, githubLogin: m.user.githubLogin, role: m.role, joinedAt: m.joinedAt }));
     this.state.invitations = invitations.filter((i) => !i.acceptedAt);
     this.state.apiKeys = apiKeys.filter((k) => !k.revokedAt);
@@ -216,6 +241,7 @@ export class CloudController {
     this.token = null;
     await this.deps.context.secrets.delete(SESSION_SECRET);
     Object.assign(this.state, EMPTY_CLOUD_STATE(this.apiUrl()), { autoUpload: this.state.autoUpload, methods: this.state.methods });
+    await this.deps.onOrg?.().catch(() => undefined);
   }
 
   // ───────────────────────────── Organizations & team ─────────────────────────────
@@ -311,7 +337,8 @@ export class CloudController {
         { label: 'read', description: 'View projects, scans, findings, reports and insights', picked: true },
         { label: 'scan', description: 'Register projects, trigger scans, upload results', picked: true },
         { label: 'ai', description: 'Request AI insights (uses the organization AI key)', picked: true },
-        { label: 'admin', description: 'Manage API keys — avoid for integrations' }
+        { label: 'audit', description: 'Read Prompt Guard reports (flagged-prompt metadata, member coverage)' },
+        { label: 'admin', description: 'Manage API keys and the Prompt Guard policy — avoid unless needed' }
       ],
       { title: 'Permissions', canPickMany: true }
     );

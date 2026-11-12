@@ -12,11 +12,15 @@ import type {
   Role,
   ScanRecord,
   ScanSource,
+  PromptEventFilter,
+  PromptEventRecord,
+  PromptGuardMemberRecord,
   SessionRecord,
   Store,
   UserRecord
 } from './types';
 import { HttpError, notFound } from '../http';
+import type { PromptPolicy } from '@/engine/models/promptGuard';
 
 type Row = Record<string, unknown>;
 
@@ -292,5 +296,46 @@ export class SupabaseStore implements Store {
   }
   async revokeApiKey(orgId: string, id: string) {
     this.one(await this.db.from('api_keys').update({ revoked_at: new Date().toISOString() }).eq('org_id', orgId).eq('id', id).select().maybeSingle(), 'API key');
+  }
+
+  // Prompt Guard
+  async getPromptPolicy(orgId: string) {
+    const row = this.check(await this.db.from('prompt_policies').select('policy').eq('org_id', orgId).maybeSingle()) as Row | null;
+    return row ? (row.policy as PromptPolicy) : null;
+  }
+  async savePromptPolicy(orgId: string, policy: PromptPolicy) {
+    this.check(await this.db.from('prompt_policies').upsert({ org_id: orgId, policy, updated_at: new Date().toISOString() }, { onConflict: 'org_id' }));
+    return policy;
+  }
+  async getPromptGuardMember(orgId: string, userId: string) {
+    return this.maybe<PromptGuardMemberRecord>(await this.db.from('prompt_guard_members').select().eq('org_id', orgId).eq('user_id', userId).maybeSingle());
+  }
+  async upsertPromptGuardMember(m: PromptGuardMemberRecord) {
+    return this.one<PromptGuardMemberRecord>(await this.db.from('prompt_guard_members').upsert(toRow(m), { onConflict: 'org_id,user_id' }).select().single());
+  }
+  async listPromptGuardMembers(orgId: string) {
+    return this.many<PromptGuardMemberRecord>(await this.db.from('prompt_guard_members').select().eq('org_id', orgId));
+  }
+  async addPromptEvents(events: PromptEventRecord[]) {
+    if (!events.length) {
+      return 0;
+    }
+    const rows = this.check(
+      await this.db.from('prompt_events').upsert(events.map(toRow), { onConflict: 'org_id,id', ignoreDuplicates: true }).select('id')
+    ) as Row[] | null;
+    return rows?.length ?? 0;
+  }
+  async listPromptEvents(orgId: string, f: PromptEventFilter) {
+    let q = this.db.from('prompt_events').select().eq('org_id', orgId).order('occurred_at', { ascending: false }).limit(f.limit);
+    if (f.userId) {
+      q = q.eq('user_id', f.userId);
+    }
+    if (f.since) {
+      q = q.gte('occurred_at', f.since);
+    }
+    if (f.tool) {
+      q = q.eq('tool', f.tool);
+    }
+    return this.many<PromptEventRecord>(await q);
   }
 }

@@ -18,9 +18,20 @@ const options = {
   logLevel: 'info'
 };
 
+/** Standalone Prompt Guard hook, run by AI coding tools with plain Node (no VS Code APIs). */
+const hookOptions = {
+  ...options,
+  entryPoints: ['src/promptGuard/hook.ts'],
+  outfile: 'dist/prompt-guard.js',
+  external: [],
+  sourcemap: false,
+  target: 'node18'
+};
+
 if (watch) {
   const ctx = await esbuild.context(options);
-  await ctx.watch();
+  const hookCtx = await esbuild.context(hookOptions);
+  await Promise.all([ctx.watch(), hookCtx.watch()]);
 } else {
-  await esbuild.build(options);
+  await Promise.all([esbuild.build(options), esbuild.build(hookOptions)]);
 }

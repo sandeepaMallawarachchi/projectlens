@@ -35,6 +35,7 @@ PM tool / scripts ──API key (plk_…)──▶          │
 1. **Database:**
    - **New database:** run `supabase/schema.sql` in the Supabase SQL editor.
    - **Existing v0.1 database** (single-tenant, from the first deployment): run `supabase/migrations/002_multitenant.sql` instead. Existing projects and keys move into an organization called "Legacy workspace".
+   - **Existing v0.2 database:** run `supabase/migrations/003_prompt_guard.sql` to add Prompt Guard (safe to run more than once).
 2. **Vercel project:** set **Root Directory** to `server` and keep "Include files outside the root directory" enabled.
 3. **Environment variables** (see `.env.example`):
    - **Required:** `PROJECTLENS_ADMIN_KEY`, `PROJECTLENS_ENCRYPTION_KEY`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`.
@@ -104,6 +105,12 @@ Base URL: `https://<your-api>/api/v1`. The full spec is at `/api/v1/openapi.json
 | `POST /scans/{id}/insights` | ai | AI analysis using the organization's AI key (`ai_not_configured` if none is set) |
 | `GET /usage` | read | Usage and plan limits |
 | `GET` / `POST /keys`, `DELETE /keys/{id}` | admin | Organization API keys |
+| `GET /prompt-guard/policy` | read | Prompt Guard policy |
+| `PUT /prompt-guard/policy` | admin | Update any subset of `mode`, `notice`, `builtin`, `customRules`, `allowlist`, `webhookUrl` |
+| `GET /prompt-guard/events` | audit | Flagged-prompt metadata. Filters: `since`, `userId`, `tool`, `limit` |
+| `GET /prompt-guard/summary`, `GET /prompt-guard/members` | audit | Totals and member coverage |
+
+**Prompt Guard** (session, used by the extension): `GET`/`PUT /orgs/{id}/prompt-guard/policy`, `POST /orgs/{id}/prompt-guard/consent`, `POST /orgs/{id}/prompt-guard/heartbeat`, `GET`/`POST /orgs/{id}/prompt-guard/events`, `GET /orgs/{id}/prompt-guard/members`, `GET /orgs/{id}/prompt-guard/summary`.
 
 **Errors:** `{ "error": { "code", "message", "details"? } }`.
 
@@ -116,6 +123,14 @@ The extension uploads its local scan result (no source code). The server then:
 2. Re-applies secret redaction to evidence.
 3. Strips local paths from warnings.
 4. Stores the result as a scan with `source: "upload"`.
+
+## Prompt Guard
+
+Owners and admins set a policy that the extension enforces on members' computers, for prompts sent to Claude Code, Codex, Cursor, GitHub Copilot and Antigravity.
+- **Modes:** `off`, `optional` (each member accepts or declines) and `required`. In `required` mode, members' sessions get `403 prompt_guard_consent_required` on organization data until they accept the current notice.
+- **Consent:** changing the mode or the notice increments `consentVersion`, so members accept again.
+- **Privacy:** the server never receives prompt text. Events hold the tool, the result (`blocked`, `warned`, or `detected` when the tool cannot block), rule ids, categories, the workspace folder name and the time. Unknown fields are dropped.
+- **Webhook:** set `webhookUrl` in the policy to receive signed `prompt.flagged` events for blocked and detected prompts.
 
 ## Webhooks
 
