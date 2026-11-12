@@ -53,6 +53,94 @@ function escapeRegex(s: string): string {
 /** Singular, human label of one match (used in messages and sanitized markers). */
 const MATCH_LABELS: Record<string, string> = { 'pii.email': 'email address', 'pii.phone': 'phone number', 'pii.card': 'payment card number' };
 
+/**
+ * Prompt-specific credential assignments (`ADMIN_KEY=abc…`, `password: hunter22`, `apiKey = "…"`).
+ * Stricter than the code scanner's generic rule: prompts are pasted config and chat, so unquoted
+ * `.env`-style values and plain lowercase values count.
+ */
+const ASSIGNMENT = /(?<name>\b[A-Za-z][A-Za-z0-9_.-]{0,80})["']?[ \t]*(?:=|:|:=|=>)[ \t]*(?<q>["'`]?)(?<secret>[^\s"'`,;]{8,})\k<q>/g;
+const SECRET_NAME_SEGMENT =
+  /(?:^|[_.-])(?:api[_-]?key|key|keys|secret|secrets|token|password|passwd|pwd|pass|passphrase|passcode|credentials?|creds|auth|bearer|private|private[_-]?key|access[_-]?key|signing|signature|sig|salt|pepper|hmac|cookie|sk|pk[_-]?secret|dsn|seed|mnemonic|otp|totp)(?:$|[_.-])/i;
+/** A provider name alone (`OPENAI=…`, `STRIPE=…`) almost always holds that provider's key. */
+const PROVIDER_NAME = /^(?:[a-z0-9]+[_.-])?(?:openai|groq|anthropic|claude|gemini|google[_-]?ai|mistral|cohere|huggingface|hf|replicate|stripe|twilio|sendgrid|resend|mailgun|postmark|slack|discord|telegram|github|gitlab|vercel|netlify|supabase[_-]?service[_-]?role|service[_-]?role|firebase|algolia|pusher|datadog|sentry|npm|pypi|aws|azure|gcp|cloudflare|openrouter|deepseek|xai|perplexity)$/i
+const SECRET_NAME_CAMEL = /[a-z0-9](?:Key|Keys|Secret|Token|Password|Passwd|Pwd|Passphrase|Credentials?|Creds|Salt|Cookie|Signature)(?:$|[A-Z_])/;
+/** Names that mention a secret but describe metadata about it, not the value. */
+const NON_SECRET_SUFFIX = /[_.-]?(?:expiry|expires?(?:_?at|_?in)?|ttl|length|len|size|url|uri|path|file|filename|name|type|header|id|count|timeout|endpoint|prefix|enabled|version|algorithm|alg|format|mode)$/i;
+const REFERENCE_VALUE = /^(?:\$|process\.env|import\.meta|os\.environ|env\(|\{\{|<|%)|example|sample|dummy|placeholder|changeme|change[_-]?me|your[_-]|xxxx|\*\*\*|redacted|replace[_-]?me|insert[_-]|todo|fake|lorem|^(?:true|false|null|none|undefined)$/i;
+
+function credentialAssignments(text: string): { start: number; end: number }[] {
+  const out: { start: number; end: number }[] = [];
+  for (const m of text.matchAll(ASSIGNMENT)) {
+    const name = m.groups!.name;
+    const value = m.groups!.secret;
+    const named = SECRET_NAME_SEGMENT.test(name) || SECRET_NAME_CAMEL.test(name) || PROVIDER_NAME.test(name);
+    if (!named || NON_SECRET_SUFFIX.test(name) || REFERENCE_VALUE.test(value) || /^\d+$/.test(value) || /^(.)\1+$/.test(value) || /^https?:\/\/[^@]*$/.test(value)) {
+      continue;
+    }
+    const start = m.index! + m[0].lastIndexOf(value);
+    out.push({ start, end: start + value.length });
+  }
+  return out;
+}
+
+/** "the admin key is X", "my password: X", "token was X", "Bearer X", "use X as the key". */
+const PROSE_BEFORE = /\b(?:api[ _-]?key|key|secret|token|password|passwd|passphrase|passcode|credentials?|pin)s?\b(?:\s+(?:is|was|=|:|->|would be|will be|are))+\s*["'`]?(?<secret>[^\s"'`,;]{8,})/gi;
+const PROSE_AFTER = /\b(?:use|using|with|set|try|paste|is)\s+["'`]?(?<secret>[^\s"'`,;]{8,})["'`]?\s+(?:as|for)\s+(?:the|my|our|your|an?)?\s*(?:[\w-]+\s+){0,2}(?:api[ _-]?key|key|secret|token|password|passphrase|credentials?)\b/gi;
+const BEARER = /\b(?:Bearer|Basic|Token)\s+(?<secret>[A-Za-z0-9._~+/=-]{12,})/g;
+/** Long random-looking tokens under any name: mixed letters and digits, high entropy. Not hashes or UUIDs. */
+const RANDOM_TOKEN = /(?<![\w/.-])(?<secret>[A-Za-z0-9_+/=-]{32,})(?![\w/.-])/g;
+
+function entropy(v: string): number {
+  const counts = new Map<string, number>();
+  for (const c of v) {
+    counts.set(c, (counts.get(c) ?? 0) + 1);
+  }
+  let e = 0;
+  for (const n of counts.values()) {
+    e -= (n / v.length) * Math.log2(n / v.length);
+  }
+  return e;
+}
+
+/** Prose values must look like a credential, not a word ("the key is important"). */
+function credentialLike(v: string): boolean {
+  if (/\d/.test(v) || (/[a-z]/.test(v) && /[A-Z]/.test(v)) || /[^A-Za-z]/.test(v)) {
+    return !/^[A-Za-z]+\.$/.test(v);
+  }
+  const vowels = (v.match(/[aeiou]/gi) ?? []).length / v.length;
+  return v.length >= 12 && vowels < 0.3;
+}
+
+function looseSecrets(text: string): { start: number; end: number }[] {
+  const out: { start: number; end: number }[] = [];
+  const push = (m: RegExpMatchArray) => {
+    const value = m.groups!.secret;
+    if (REFERENCE_VALUE.test(value) || /^\d+$/.test(value) || /^(.)\1+$/.test(value) || /^[a-z]+$/i.test(value) && value.length < 8) {
+      return;
+    }
+    const start = m.index! + m[0].lastIndexOf(value);
+    out.push({ start, end: start + value.length });
+  };
+  for (const re of [PROSE_BEFORE, PROSE_AFTER, BEARER]) {
+    for (const m of text.matchAll(re)) {
+      // Prose values must look like a credential, not an ordinary word ("the key is important").
+      if (re !== BEARER && !credentialLike(m.groups!.secret)) {
+        continue;
+      }
+      push(m);
+    }
+  }
+  for (const m of text.matchAll(RANDOM_TOKEN)) {
+    const v = m.groups!.secret;
+    const hexOrUuid = /^[0-9a-f-]+$/i.test(v);
+    const mixed = /[a-z]/.test(v) && /[A-Z]/.test(v) && /\d/.test(v);
+    if (!hexOrUuid && mixed && entropy(v) >= 4 && !/^[A-Za-z]+(?:[_-][A-Za-z]+)+$/.test(v)) {
+      push(m);
+    }
+  }
+  return out;
+}
+
 function builtinLabel(id: string): string {
   return MATCH_LABELS[id] ?? BUILTIN_DETECTORS.find((d) => d.id === id)?.label ?? id;
 }
@@ -74,6 +162,11 @@ export function checkPrompt(input: string, policy: PromptPolicy): PromptCheck {
   if (secrets && secrets !== 'off') {
     for (const s of findSecrets(text)) {
       add({ ruleId: 'secrets', label: s.pattern.title, category: 'secret', action: secrets, start: s.secretIndex, end: s.secretIndex + s.secret.length });
+    }
+    for (const a of [...credentialAssignments(text), ...looseSecrets(text)]) {
+      if (!matches.some((x) => x.start < a.end && x.end > a.start)) {
+        add({ ruleId: 'secrets', label: 'credential', category: 'secret', action: secrets, ...a });
+      }
     }
     // Private key bodies span lines: redact the whole block.
     const pem = /-----BEGIN [A-Z ]*PRIVATE KEY(?: BLOCK)?-----[\s\S]*?(-----END [A-Z ]*PRIVATE KEY(?: BLOCK)?-----|$)/g;

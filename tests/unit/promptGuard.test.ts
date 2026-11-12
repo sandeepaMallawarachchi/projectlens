@@ -24,6 +24,69 @@ describe('Prompt Guard detector', () => {
     expect(r.sanitized).toMatch(/^deploy with key \[REDACTED .+\] please$/);
   });
 
+  it('blocks .env-style and prose credential assignments that the code scanner skips', () => {
+    for (const prompt of [
+      'PROJECTLENS_ADMIN_KEY=abswbdedjfnjefbf check this key correctly configured',
+      'export DB_PASSWORD="s3cretpass99"',
+      'my api key: sk9f8g7h6j5k4l3m',
+      'set clientSecret = qwertyuiop12 in the config',
+      'SECRET_KEY_BASE=8f3a9c1d2e7b6a5f'
+    ]) {
+      const r = checkPrompt(prompt, policy());
+      expect(r.action, prompt).toBe('block');
+    }
+    const r = checkPrompt('PROJECTLENS_ADMIN_KEY=abswbdedjfnjefbf check', policy());
+    expect(r.sanitized).toBe('PROJECTLENS_ADMIN_KEY=[REDACTED credential] check');
+  });
+
+  it('catches keys under other names, in prose, and as long random tokens', () => {
+    const v = 'abswbdedjfnjefbf';
+    for (const prompt of [
+      `STRIPE_SK=${v}`,
+      `OPENAI=${v}`,
+      `SUPABASE_SERVICE_ROLE=${v}`,
+      `PASSPHRASE=${v}`,
+      `WEBHOOK_SIGNING=${v}`,
+      `SESSION_COOKIE=${v}`,
+      `the admin key is ${v}`,
+      `use ${v} as the admin key`,
+      `my password: hunter2024`,
+      `curl -H "Authorization: Bearer ${v}"`,
+      `here it is: ${['Zx9', 'Qw2LmP8vRt5Kn3Hy7Bc4Df6Gj1Ss0Ae'].join('')}`
+    ]) {
+      expect(checkPrompt(prompt, policy()).action, prompt).toBe('block');
+    }
+  });
+
+  it('does not flag ordinary text, hashes or ids', () => {
+    for (const prompt of [
+      'the key is important for caching',
+      'the token was refreshed correctly',
+      'use the password field as the login key',
+      'commit 3f9a2c4d1e8b7a6f5c4d3e2f1a0b9c8d7e6f5a4b broke the build',
+      'id 123e4567-e89b-12d3-a456-426614174000 is missing',
+      'CLIENT_ID=my-app-frontend',
+      'rename handleUserAuthenticationCallbackFunction to onAuth'
+    ]) {
+      expect(checkPrompt(prompt, policy()).action, prompt).toBe('none');
+    }
+  });
+
+  it('ignores credential names without real values', () => {
+    for (const prompt of [
+      'PROJECTLENS_ADMIN_KEY= is empty in .env.example',
+      'set API_KEY=${API_KEY} from the environment',
+      'apiKey: process.env.API_KEY',
+      'TOKEN_EXPIRY=86400000 and JWT_SECRET_LENGTH=64',
+      'OPENAI_API_KEY=<your-key-here>',
+      'password=changeme123',
+      'the keyboard layout: dvorak-intl',
+      'Authorization: Bearer <key>'
+    ]) {
+      expect(checkPrompt(prompt, policy()).action, prompt).toBe('none');
+    }
+  });
+
   it('redacts whole private key blocks', () => {
     const pem = ['-----BEGIN RSA PRIVATE KEY-----', 'MIIEowIBAAKCAQEA1c7+abc', 'def123==', '-----END RSA PRIVATE KEY-----'].join('\n');
     const r = checkPrompt(`why does this fail?\n${pem}\nthanks`, policy());
