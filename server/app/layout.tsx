@@ -14,11 +14,22 @@ export const metadata: Metadata = {
   }
 };
 
-export const viewport: Viewport = { themeColor: '#0b1119' };
+export const viewport: Viewport = {
+  themeColor: [
+    { media: '(prefers-color-scheme: dark)', color: '#0b1119' },
+    { media: '(prefers-color-scheme: light)', color: '#f7f9fb' }
+  ]
+};
+
+// Applies a saved light/dark choice before first paint (no flash). Default: follow the system.
+const themeScript = `try{var t=localStorage.getItem('projectlens-theme');if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t)}catch(e){}`;
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
+      </head>
       <body>{children}</body>
     </html>
   );

@@ -557,6 +557,8 @@ export function ExtensionTour({ initial = 0 }: { initial?: number }) {
   const [visible, setVisible] = useState(false);
   const [reduced, setReduced] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLOListElement>(null);
+  const firstScroll = useRef(true);
 
   const go = (i: number) => {
     setIndex((i + STEPS.length) % STEPS.length);
@@ -578,6 +580,20 @@ export function ExtensionTour({ initial = 0 }: { initial?: number }) {
       io?.disconnect();
     };
   }, []);
+
+  // On narrow screens the steps are a horizontal row: keep the active one centered.
+  // Scrolls only that row (never the page), and only when the row actually overflows.
+  useEffect(() => {
+    const list = listRef.current;
+    const item = list?.children[index] as HTMLElement | undefined;
+    if (!list || !item || list.scrollWidth <= list.clientWidth) {
+      return;
+    }
+    const left = item.offsetLeft - (list.clientWidth - item.offsetWidth) / 2;
+    // First position is instant (no visible jump on load); later changes glide.
+    list.scrollTo({ left: Math.max(0, left), behavior: reduced || firstScroll.current ? 'auto' : 'smooth' });
+    firstScroll.current = false;
+  }, [index, reduced]);
 
   const running = visible && !paused && !reduced;
   useEffect(() => {
@@ -603,7 +619,7 @@ export function ExtensionTour({ initial = 0 }: { initial?: number }) {
         }
       }}
     >
-      <ol className="tour-steps" role="tablist" aria-label="Extension tour">
+      <ol className="tour-steps" ref={listRef} role="tablist" aria-label="Extension tour">
         {STEPS.map((s, i) => (
           <li key={s.id}>
             <button role="tab" aria-selected={i === index} aria-controls="tour-panel" className={`tour-step ${i === index ? 'tour-step-on' : ''}`} onClick={() => go(i)}>

@@ -4,7 +4,8 @@ import { emailEnabled } from '@/lib/email';
 import { limits } from '@/lib/quotas';
 import { CodeBlock } from './components/CodeBlock';
 import { ExtensionTour } from './components/ExtensionTour';
-import { GitHubIcon, GitLabIcon, PlugIcon, SparklesIcon, VSCodeIcon } from './components/BrandIcons';
+import { ThemeToggle } from './components/ThemeToggle';
+import { GitHubIcon, GitLabIcon, PlugIcon, SparklesIcon, VSCodeIcon, BracesIcon, ActivityIcon } from './components/BrandIcons';
 import { NavLinks } from './components/NavLinks';
 import { ScrollEffects } from './components/ScrollEffects';
 
@@ -250,9 +251,10 @@ export async function POST(req: Request) {
         <div className="container header-inner">
           <a className="brand" href="#top" aria-label="ProjectLens Cloud home">
             <Image src="/logo.svg" alt="" width={30} height={30} priority />
-            ProjectLens <small>Cloud API</small>
+            ProjectLens
           </a>
           <NavLinks />
+          <ThemeToggle />
         </div>
       </header>
 
@@ -683,8 +685,12 @@ export async function POST(req: Request) {
               <a href={MARKETPLACE} target="_blank" rel="noreferrer">
                 <VSCodeIcon size={14} /> VS Code extension
               </a>
-              <a href="/api/v1/openapi.json" target="_blank" rel="noreferrer">OpenAPI</a>
-              <a href="/api/v1/health">Status</a>
+              <a href="/api/v1/openapi.json" target="_blank" rel="noreferrer">
+                <BracesIcon size={14} /> OpenAPI
+              </a>
+              <a href="/api/v1/health" target="_blank" rel="noreferrer">
+                <ActivityIcon size={14} /> Status
+              </a>
               <a href={GITHUB} target="_blank" rel="noreferrer">
                 <GitHubIcon size={14} /> GitHub
               </a>
