@@ -42,7 +42,7 @@ function useStage(times: number[]): number {
     }
     const timers = times.map((t, i) => setTimeout(() => setStage(i + 1), t));
     return () => timers.forEach(clearTimeout);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
   return stage;
 }
 
@@ -602,7 +602,7 @@ export function ExtensionTour({ initial = 0 }: { initial?: number }) {
     }
     const t = setTimeout(() => go(index + 1), AUTO_MS);
     return () => clearTimeout(t);
-  }, [running, index, cycle]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [running, index, cycle]);
 
   const step = STEPS[index];
   const Screen = step.screen;

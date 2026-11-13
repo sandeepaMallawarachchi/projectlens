@@ -38,8 +38,17 @@ export function launcherPath(paths: HookPaths, tool: AiTool): string {
 }
 
 /** Shell command that runs our launcher (quoted when the path contains spaces). */
+/**
+ * Command that runs our launcher.
+ * Claude Code on Windows runs hooks through Git Bash (or PowerShell without Git Bash), where a bare
+ * `C:\...\hook.cmd` path does not run, so its hook is installed with `"shell": "powershell"` and
+ * the documented `& 'path'` form. Other tools get the path itself (quoted when it contains spaces).
+ */
 export function hookCommand(paths: HookPaths, tool: AiTool): string {
   const p = launcherPath(paths, tool);
+  if (paths.windows && tool === 'claude') {
+    return `& '${p.replace(/'/g, "''")}'`;
+  }
   return /\s/.test(p) ? `"${p}"` : p;
 }
 
@@ -68,12 +77,16 @@ function readConfig(path: string): Json {
 }
 
 function writeConfig(path: string, config: Json): void {
+  const text = `${JSON.stringify(config, null, 2)}\n`;
+  if (existsSync(path) && readFileSync(path, 'utf8') === text) {
+    return; // unchanged: leave the file (and its timestamp) alone
+  }
   mkdirSync(dirname(path), { recursive: true });
   const backup = `${path}.projectlens-backup`;
   if (existsSync(path) && !existsSync(backup)) {
     copyFileSync(path, backup);
   }
-  writeFileSync(path, `${JSON.stringify(config, null, 2)}\n`);
+  writeFileSync(path, text);
 }
 
 const obj = (v: unknown): Json => (v && typeof v === 'object' && !Array.isArray(v) ? (v as Json) : {});
@@ -101,22 +114,23 @@ interface ToolInstaller {
   configPath(p: HookPaths): string;
   detect(p: HookPaths): boolean;
   has(config: Json): boolean;
-  add(config: Json, command: string): Json;
+  add(config: Json, command: string, paths: HookPaths): Json;
   remove(config: Json): Json;
   note: string | null;
   /** The whole file belongs to us (delete it on uninstall). */
   ownFile?: boolean;
 }
 
-function eventGroupInstaller(dirName: string, file: string, event: string, extra: Json = {}, note: string | null = null): ToolInstaller {
+function eventGroupInstaller(dirName: string, file: string, event: string, extra: Json = {}, note: string | null = null, powershellOnWindows = false): ToolInstaller {
   return {
     configPath: (p) => join(p.home, dirName, file),
     detect: (p) => existsSync(join(p.home, dirName)),
     has: (c) => arr(obj(c.hooks)[event]).some(groupHasOurs),
-    add: (c, command) => {
+    add: (c, command, p) => {
       const hooks = obj(c.hooks);
       const groups = withoutOursGroups(arr(hooks[event]));
-      groups.push({ hooks: [{ type: 'command', command, timeout: HOOK_TIMEOUT_SECONDS }] });
+      const shell = powershellOnWindows && p.windows ? { shell: 'powershell' } : {};
+      groups.push({ hooks: [{ type: 'command', command, ...shell, timeout: HOOK_TIMEOUT_SECONDS }] });
       return { ...extra, ...c, hooks: { ...hooks, [event]: groups } };
     },
     remove: (c) => {
@@ -136,7 +150,7 @@ function eventGroupInstaller(dirName: string, file: string, event: string, extra
 const ANTIGRAVITY_HOOK = 'projectlens-prompt-guard';
 
 export const INSTALLERS: Record<AiTool, ToolInstaller> = {
-  claude: eventGroupInstaller('.claude', 'settings.json', 'UserPromptSubmit'),
+  claude: eventGroupInstaller('.claude', 'settings.json', 'UserPromptSubmit', {}, null, true),
   codex: eventGroupInstaller('.codex', 'hooks.json', 'UserPromptSubmit', {}, 'Codex runs new hooks only after you trust them: open Codex and run /hooks (CLI) or Settings → Hooks (app), then trust "ProjectLens Prompt Guard".'),
   cursor: {
     configPath: (p) => join(p.home, '.cursor', 'hooks.json'),
@@ -250,8 +264,27 @@ export function installHook(paths: HookPaths, tool: AiTool): ToolStatus {
   const inst = INSTALLERS[tool];
   const path = inst.configPath(paths);
   const config = inst.ownFile ? {} : readConfig(path);
-  writeConfig(path, inst.add(config, hookCommand(paths, tool)));
+  writeConfig(path, inst.add(config, hookCommand(paths, tool), paths));
   return toolStatus(paths, tool);
+}
+
+/**
+ * Rewrites the entries of already-installed hooks in the current format (e.g. after an update that
+ * changes how a tool runs the hook). Files whose content would not change are not touched.
+ */
+export function refreshInstalledHooks(paths: HookPaths): AiTool[] {
+  const updated: AiTool[] = [];
+  for (const tool of AI_TOOLS) {
+    try {
+      if (toolStatus(paths, tool).installed) {
+        installHook(paths, tool);
+        updated.push(tool);
+      }
+    } catch {
+      // unreadable config: leave it for the user to fix (shown in the dashboard)
+    }
+  }
+  return updated;
 }
 
 export function uninstallHook(paths: HookPaths, tool: AiTool): ToolStatus {

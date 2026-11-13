@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { checkPrompt, luhn } from '../../src/promptGuard/detector';
 import { evaluateHook, projectOf } from '../../src/promptGuard/hookCore';
-import { allToolStatus, installHook, uninstallHook, writeRuntime, type HookPaths } from '../../src/promptGuard/installers';
+import { allToolStatus, hookCommand, installHook, refreshInstalledHooks, uninstallHook, writeRuntime, type HookPaths } from '../../src/promptGuard/installers';
 import { defaultPromptPolicy, type LocalPromptPolicy, type PromptPolicy } from '../../src/models/promptGuard';
 
 // Built at runtime so this file contains no literal credential.
@@ -218,6 +218,34 @@ describe('Prompt Guard installers', () => {
 
     uninstallHook(paths, 'copilot');
     expect(existsSync(join(home, '.copilot', 'hooks', 'projectlens-prompt-guard.json'))).toBe(false);
+  });
+
+  it('installs the Claude Code hook with PowerShell on Windows and migrates old entries', () => {
+    const win: HookPaths = { home, dir: join(home, '.projectlens', 'prompt-guard'), windows: true };
+    mkdirSync(join(home, '.claude'));
+    writeRuntime(win, __filename, 'C:\\Program Files\\Microsoft VS Code\\Code.exe');
+    // An entry as written by 0.3.x: a bare path, which Git Bash cannot run.
+    const old = join(win.dir, 'hook-claude.cmd');
+    writeFileSync(join(home, '.claude', 'settings.json'), JSON.stringify({ hooks: { UserPromptSubmit: [{ hooks: [{ type: 'command', command: old, timeout: 10 }] }] } }));
+    expect(refreshInstalledHooks(win)).toEqual(['claude']);
+    const entry = JSON.parse(readFileSync(join(home, '.claude', 'settings.json'), 'utf8')).hooks.UserPromptSubmit;
+    expect(entry).toHaveLength(1);
+    expect(entry[0].hooks[0]).toEqual({ type: 'command', command: `& '${old}'`, shell: 'powershell', timeout: 10 });
+    // Codex keeps the plain path (it already works on Windows).
+    mkdirSync(join(home, '.codex'));
+    installHook(win, 'codex');
+    const codex = JSON.parse(readFileSync(join(home, '.codex', 'hooks.json'), 'utf8')).hooks.UserPromptSubmit[0].hooks[0];
+    expect(codex.shell).toBeUndefined();
+    expect(codex.command).toBe(join(win.dir, 'hook-codex.cmd'));
+    // Unchanged files are not rewritten.
+    const before = statSync(join(home, '.claude', 'settings.json')).mtimeMs;
+    refreshInstalledHooks(win);
+    expect(statSync(join(home, '.claude', 'settings.json')).mtimeMs).toBe(before);
+  });
+
+  it('escapes single quotes in the PowerShell path', () => {
+    const win: HookPaths = { home: "C:\\Users\\o'brien", dir: "C:\\Users\\o'brien\\.projectlens\\prompt-guard", windows: true };
+    expect(hookCommand(win, 'claude')).toMatch(/^& 'C:.*o''brien.*hook-claude\.cmd'$/);
   });
 
   it('refuses to overwrite a settings file it cannot parse', () => {

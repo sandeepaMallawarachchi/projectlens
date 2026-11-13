@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.2
+
+- **Prompt Guard on Windows:** fixed the Claude Code hook not running on Windows, so prompts were not checked there. Claude Code runs hooks through Git Bash (or PowerShell), which could not start the hook from its Windows path. The hook is now installed with PowerShell, as Claude Code's documentation recommends.
+- Existing installations are updated automatically the next time VS Code starts. No need to reinstall the hook.
+
 ## 0.3.1
 
 - **Prompt Guard:** catches more credentials in prompts:

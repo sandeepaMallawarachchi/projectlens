@@ -15,7 +15,7 @@ import {
   type PromptPolicy
 } from '../models/promptGuard';
 import { CloudError, type CloudClient } from '../cloud/cloudClient';
-import { allToolStatus, defaultHookDir, installHook, uninstallHook, writeRuntime, type HookPaths } from './installers';
+import { allToolStatus, defaultHookDir, installHook, refreshInstalledHooks, uninstallHook, writeRuntime, type HookPaths } from './installers';
 import { checkPrompt, describeMatches } from './detector';
 
 const SYNC_MS = 10 * 60_000;
@@ -73,7 +73,12 @@ export class PromptGuardController implements vscode.Disposable {
     this.refreshTools();
     // Keep installed hooks running the script shipped with this extension version.
     if (this.state.tools.some((t) => t.installed)) {
-      this.safe(() => this.writeRuntime());
+      this.safe(() => {
+        this.writeRuntime();
+        // Also migrate hook entries written by older versions (e.g. Claude Code on Windows).
+        refreshInstalledHooks(this.paths);
+      });
+      this.refreshTools();
     }
     const watcher = vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(vscode.Uri.file(this.paths.dir), 'events.jsonl'));
     const onEvents = () => void this.processEvents();
