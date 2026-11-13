@@ -34,6 +34,8 @@ export function NavLinks() {
         return r.top <= line && r.bottom > line;
       });
       setActive(window.scrollY < 120 ? null : (current?.id ?? null));
+      // Header is transparent at the top of the page and solid once scrolled.
+      document.querySelector('.header')?.classList.toggle('scrolled', window.scrollY > 8);
     };
     const onScroll = () => {
       if (!frame) {
@@ -61,7 +63,7 @@ export function NavLinks() {
         setOpen(false);
       }
     };
-    const wide = window.matchMedia('(min-width: 901px)');
+    const wide = window.matchMedia('(min-width: 1041px)');
     const onWide = () => wide.matches && setOpen(false);
     document.addEventListener('keydown', onKey);
     document.addEventListener('click', onClick);

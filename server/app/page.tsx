@@ -3,6 +3,7 @@ import { env } from '@/lib/env';
 import { emailEnabled } from '@/lib/email';
 import { limits } from '@/lib/quotas';
 import { CodeBlock } from './components/CodeBlock';
+import { CodeTabs } from './components/CodeTabs';
 import { ExtensionTour } from './components/ExtensionTour';
 import { ThemeToggle } from './components/ThemeToggle';
 import { CopyChip } from './components/CopyChip';
@@ -635,9 +636,14 @@ export async function POST(req: Request) {
                 </li>
               </ol>
             </div>
-            <div className="stack reveal reveal-delay-1">
-              <CodeBlock title="Quickstart · curl" code={curlSample} />
-              <CodeBlock title="Integration · TypeScript (server)" code={tsSample} />
+            <div className="stack stack-sticky reveal reveal-delay-1">
+              <CodeTabs
+                label="Quickstart samples"
+                tabs={[
+                  { id: 'curl', title: 'curl + jq', hint: 'Register → scan → wait → results, from a terminal.', code: curlSample },
+                  { id: 'ts', title: 'TypeScript', hint: 'Server-side client with scan-and-wait, for your backend.', code: tsSample }
+                ]}
+              />
               <div className="callout">
                 <strong>Tip:</strong> register projects with your own tool’s id as <code>externalId</code>, then address them as <code>/projects/ext:&lt;id&gt;</code> - no
                 ProjectLens ids to store.
@@ -859,15 +865,17 @@ export async function POST(req: Request) {
                 <strong>Free plan, per organization:</strong> {l.projects} projects · {l.cloudScansPerDay} cloud scans, {l.uploadsPerDay} uploads and {l.aiInsightsPerDay} AI
                 insights per 24 h · one scan per project per minute.
               </div>
-              <h3 className="sub-head">Troubleshooting</h3>
-              <div className="trouble reveal">
-                {TROUBLESHOOTING.map(([q, a]) => (
-                  <details key={q}>
-                    <summary>{q}</summary>
-                    <p>{a}</p>
-                  </details>
-                ))}
-              </div>
+            </div>
+          </div>
+          <div className="container trouble-block">
+            <h3 className="sub-head">Troubleshooting</h3>
+            <div className="trouble reveal">
+              {TROUBLESHOOTING.map(([q, a], i) => (
+                <details key={q} open={i === 0}>
+                  <summary>{q}</summary>
+                  <p>{a}</p>
+                </details>
+              ))}
             </div>
           </div>
         </section>
