@@ -15,7 +15,7 @@ export function openApiSpec(origin: string) {
     openapi: '3.1.0',
     info: {
       title: 'ProjectLens API',
-      version: '0.3.0',
+      version: '0.4.0',
       description:
         'Hosted, multi-tenant analysis of GitHub/GitLab repositories: technologies, code quality, security, implementation progress, production readiness and AI insights (with each organization\'s own AI key). Authenticate with `Authorization: Bearer <token>`: an organization API key (`plk_…`, scopes read/scan/ai/audit/admin) for integrations, or a user session (`pls_…`, from GitHub or email sign-in) with optional `X-ProjectLens-Org` to select the organization.'
     },
@@ -163,7 +163,7 @@ export function openApiSpec(origin: string) {
           requestBody: {
             content: {
               'application/json': {
-                schema: { type: 'object', properties: { mode: { type: 'string', enum: ['quick', 'full'], default: 'full' }, ref: { type: 'string' }, force: { type: 'boolean' }, wait: { type: 'boolean' }, callbackUrl: { type: 'string', description: 'HTTPS webhook receiving scan.completed / scan.failed' } } }
+                schema: { type: 'object', properties: { mode: { type: 'string', enum: ['quick', 'full'], default: 'full' }, ref: { type: 'string' }, force: { type: 'boolean' }, wait: { type: 'boolean' }, callbackUrl: { type: 'string', description: 'HTTPS webhook receiving scan.completed / scan.failed, signed with the organization webhook secret (see /webhook-secret)' } } }
               }
             }
           },
@@ -233,7 +233,7 @@ export function openApiSpec(origin: string) {
           responses: { '200': ok(data(ref('PromptPolicy'))), ...errorResponses }
         }
       },
-      '/prompt-guard/events': { get: { summary: 'Flagged-prompt events, metadata only (scope: audit)', tags: ['Prompt Guard'], parameters: [{ name: 'since', in: 'query', schema: { type: 'string', format: 'date-time' } }, { name: 'userId', in: 'query', schema: { type: 'string' } }, { name: 'tool', in: 'query', schema: { type: 'string', enum: ['claude', 'codex', 'cursor', 'copilot', 'antigravity'] } }, { name: 'limit', in: 'query', schema: { type: 'integer', maximum: 500 } }], responses: { '200': ok(data({ type: 'array', items: ref('PromptEvent') })), ...errorResponses } } },
+      '/prompt-guard/events': { get: { summary: 'Flagged-prompt events, metadata only (scope: audit)', tags: ['Prompt Guard'], parameters: [{ name: 'since', in: 'query', schema: { type: 'string', format: 'date-time' } }, { name: 'before', in: 'query', description: 'Pagination cursor: pass `pagination.nextBefore` from the previous page', schema: { type: 'string', format: 'date-time' } }, { name: 'userId', in: 'query', schema: { type: 'string' } }, { name: 'tool', in: 'query', schema: { type: 'string', enum: ['claude', 'codex', 'cursor', 'copilot', 'antigravity'] } }, { name: 'limit', in: 'query', schema: { type: 'integer', maximum: 500 } }], responses: { '200': ok({ type: 'object', properties: { data: { type: 'array', items: ref('PromptEvent') }, pagination: { type: 'object', properties: { limit: { type: 'integer' }, nextBefore: { type: ['string', 'null'], description: 'Set when more (older) events exist' } } } } }), ...errorResponses } } },
       '/prompt-guard/summary': { get: { summary: 'Totals by rule, tool, category and member consent (scope: audit)', tags: ['Prompt Guard'], parameters: [{ name: 'days', in: 'query', schema: { type: 'integer', maximum: 90 } }], responses: { '200': ok(data({ type: 'object' })), ...errorResponses } } },
       '/prompt-guard/members': { get: { summary: 'Consent and installed hooks per member (scope: audit)', tags: ['Prompt Guard'], responses: { '200': ok(data({ type: 'array', items: { type: 'object' } })), ...errorResponses } } },
       '/orgs/{orgId}/prompt-guard/policy': { parameters: [{ name: 'orgId', in: 'path', required: true, schema: { type: 'string' } }], get: { summary: 'Policy and the caller\'s consent (session)', tags: ['Prompt Guard'], responses: { '200': ok(data({ type: 'object' })) } }, put: { summary: 'Update the policy (admin session)', tags: ['Prompt Guard'], requestBody: { content: { 'application/json': { schema: ref('PromptPolicyUpdate') } } }, responses: { '200': ok(data(ref('PromptPolicy'))) } } },
@@ -242,6 +242,12 @@ export function openApiSpec(origin: string) {
       '/orgs/{orgId}/prompt-guard/events': { parameters: [{ name: 'orgId', in: 'path', required: true, schema: { type: 'string' } }], get: { summary: 'Events (admins: everyone; members: their own)', tags: ['Prompt Guard'], responses: { '200': ok(data({ type: 'array', items: ref('PromptEvent') })) } }, post: { summary: 'Upload events from the extension: `{ events: PromptEvent[] }` (session)', tags: ['Prompt Guard'], responses: { '201': ok(data({ type: 'object' }), 'Stored') } } },
       '/orgs/{orgId}/prompt-guard/members': { parameters: [{ name: 'orgId', in: 'path', required: true, schema: { type: 'string' } }], get: { summary: 'Consent and hooks per member (admin session)', tags: ['Prompt Guard'], responses: { '200': ok(data({ type: 'array', items: { type: 'object' } })) } } },
       '/orgs/{orgId}/prompt-guard/summary': { parameters: [{ name: 'orgId', in: 'path', required: true, schema: { type: 'string' } }], get: { summary: 'Totals (admin session)', tags: ['Prompt Guard'], responses: { '200': ok(data({ type: 'object' })) } } },
+      '/webhook-secret': {
+        get: { summary: 'Whether the organization has a webhook signing secret (scope: admin; the secret is never returned here)', tags: ['Webhooks'], responses: { '200': ok(data({ type: 'object', properties: { configured: { type: 'boolean' }, last4: { type: ['string', 'null'] }, createdAt: { type: ['string', 'null'] } } })), ...errorResponses } },
+        post: { summary: 'Create or rotate the webhook signing secret (scope: admin). The response is the only time the secret is shown.', tags: ['Webhooks'], responses: { '201': ok(data({ type: 'object', properties: { secret: { type: 'string', description: 'whsec_…' }, last4: { type: 'string' }, createdAt: { type: 'string' } } }), 'Created'), ...errorResponses } },
+        delete: { summary: 'Remove the webhook signing secret (scope: admin)', tags: ['Webhooks'], responses: { '204': { description: 'Removed' }, ...errorResponses } }
+      },
+      '/orgs/{orgId}/webhook-secret': { parameters: [{ name: 'orgId', in: 'path', required: true, schema: { type: 'string' } }], get: { summary: 'Signing secret status (admin session)', tags: ['Webhooks'], responses: { '200': ok(data({ type: 'object' })) } }, post: { summary: 'Create or rotate (admin session); shown once', tags: ['Webhooks'], responses: { '201': ok(data({ type: 'object' }), 'Created') } }, delete: { summary: 'Remove (admin session)', tags: ['Webhooks'], responses: { '204': { description: 'Removed' } } } },
       '/keys/{keyId}': { delete: { summary: 'Revoke an API key (scope: admin)', parameters: [{ name: 'keyId', in: 'path', required: true, schema: { type: 'string' } }], responses: { '204': { description: 'Revoked' }, ...errorResponses } } }
     }
   };

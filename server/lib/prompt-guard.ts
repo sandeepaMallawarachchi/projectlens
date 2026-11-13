@@ -233,7 +233,7 @@ export async function ingestEvents(orgId: string, userId: string, actor: string,
   if (policy.webhookUrl && notify.length && accepted > 0) {
     const url = policy.webhookUrl;
     const payload = { member: actor, events: notify.map(({ orgId: _o, userId: _u, receivedAt: _r, ...e }) => ({ ...e, userId })) };
-    const send = () => sendWebhook(url, 'prompt.flagged', payload).then(() => undefined);
+    const send = () => sendWebhook(url, 'prompt.flagged', payload, orgId).then(() => undefined);
     try {
       after(send);
     } catch {
@@ -279,16 +279,28 @@ export async function summary(orgId: string, days: number) {
   };
 }
 
-export function sinceParam(url: URL): string | undefined {
-  const raw = url.searchParams.get('since');
+function dateParam(url: URL, name: 'since' | 'before'): string | undefined {
+  const raw = url.searchParams.get(name);
   if (!raw) {
     return undefined;
   }
   const ms = Date.parse(raw);
   if (Number.isNaN(ms)) {
-    throw new HttpError(400, 'invalid_since', '`since` must be an ISO 8601 date');
+    throw new HttpError(400, `invalid_${name}`, `\`${name}\` must be an ISO 8601 date`);
   }
   return new Date(ms).toISOString();
+}
+
+export const sinceParam = (url: URL) => dateParam(url, 'since');
+export const beforeParam = (url: URL) => dateParam(url, 'before');
+
+/**
+ * Events page response. Newest first; when the page is full, `nextBefore` is the cursor for the
+ * next (older) page: repeat the request with `?before=<nextBefore>`.
+ */
+export function eventsPage(events: PromptEventRecord[], limit: number) {
+  const last = events[events.length - 1];
+  return { data: events.map(eventDto), pagination: { limit, nextBefore: events.length === limit && last ? last.occurredAt : null } };
 }
 
 export function toolParam(url: URL): AiTool | undefined {

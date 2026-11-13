@@ -1,7 +1,7 @@
 import { handle, json, readJson } from '@/lib/http';
 import { getStore } from '@/lib/store';
 import { atLeast, orgMember } from '@/lib/org-access';
-import { eventDto, eventsSchema, ingestEvents, sinceParam, toolParam } from '@/lib/prompt-guard';
+import { beforeParam, eventsPage, eventsSchema, ingestEvents, sinceParam, toolParam } from '@/lib/prompt-guard';
 import { intParam } from '@/lib/validation';
 import type { Params } from '@/lib/route-utils';
 
@@ -11,11 +11,12 @@ export const dynamic = 'force-dynamic';
 export const GET = handle(async (req: Request, { params }: Params<'orgId'>) => {
   const { org, user, membership } = await orgMember(req, (await params).orgId);
   const url = new URL(req.url);
+  const limit = intParam(url, 'limit', 100, 500);
   const admin = atLeast(membership.role, 'admin');
   const requested = url.searchParams.get('userId');
   const userId = admin ? requested ?? undefined : user.id;
-  const events = await getStore().listPromptEvents(org.id, { userId, since: sinceParam(url), tool: toolParam(url), limit: intParam(url, 'limit', 100, 500) });
-  return json({ data: events.map(eventDto) });
+  const events = await getStore().listPromptEvents(org.id, { userId, since: sinceParam(url), before: beforeParam(url), tool: toolParam(url), limit });
+  return json(eventsPage(events, limit));
 });
 
 /** Batch upload from the extension. Metadata only: the schema has no field for prompt text. */

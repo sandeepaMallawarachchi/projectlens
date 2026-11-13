@@ -165,14 +165,17 @@ export class CloudController {
         }
         throw err;
       });
-    const [members, invitations, apiKeys, aiKeys, projects, usage] = await Promise.all([
+    const [members, invitations, apiKeys, aiKeys, projects, usage, webhookSecret] = await Promise.all([
       c.members(orgId),
       admin ? c.invitations(orgId) : Promise.resolve([]),
       admin ? guarded(c.apiKeys(), []) : Promise.resolve([]),
       c.aiKeys(orgId),
       guarded(c.projects(), []),
-      c.usage(orgId)
+      c.usage(orgId),
+      // Older API deployments do not have this endpoint yet: hide the section instead of failing.
+      admin ? c.webhookSecretStatus(orgId).catch(() => null) : Promise.resolve(null)
     ]);
+    this.state.webhookSecret = webhookSecret;
     if (consentBlocked) {
       this.state.error = 'This organization requires Prompt Guard. Review the policy in the Prompt Guard section to load projects.';
     }
@@ -360,6 +363,57 @@ export class CloudController {
       await vscode.env.clipboard.writeText(created.key);
       void vscode.window.showInformationMessage('API key copied to the clipboard.');
     }
+  }
+
+  /** Creates or rotates the organization's webhook signing secret; shown once in a VS Code dialog. */
+  async rotateWebhookSecret(): Promise<void> {
+    const orgId = this.state.currentOrgId;
+    if (!orgId) {
+      return;
+    }
+    if (this.state.webhookSecret?.configured) {
+      const ok = await vscode.window.showWarningMessage(
+        'Rotate the webhook signing secret?',
+        { modal: true, detail: 'Webhooks are signed with the new secret immediately. Update every system that verifies ProjectLens webhooks, or they will reject them.' },
+        'Rotate'
+      );
+      if (!ok) {
+        return;
+      }
+    }
+    const created = await this.run('Creating webhook secret', () => this.client().rotateWebhookSecret(orgId));
+    if (!created) {
+      return;
+    }
+    await this.run('Refreshing', () => this.loadOrg());
+    // Shown once, in a VS Code dialog — never sent to the webview.
+    const copy = await vscode.window.showInformationMessage(
+      'Webhook signing secret created. Copy it now; it will not be shown again.',
+      {
+        modal: true,
+        detail: `${created.secret}\n\nStore it in the receiving system as PROJECTLENS_WEBHOOK_SECRET and verify the X-ProjectLens-Signature header (sha256=<HMAC-SHA256 of the raw body>).`
+      },
+      'Copy secret'
+    );
+    if (copy) {
+      await vscode.env.clipboard.writeText(created.secret);
+      void vscode.window.showInformationMessage('Webhook secret copied to the clipboard.');
+    }
+  }
+
+  async removeWebhookSecret(): Promise<void> {
+    const orgId = this.state.currentOrgId;
+    if (!orgId) {
+      return;
+    }
+    const ok = await vscode.window.showWarningMessage('Remove the webhook signing secret?', { modal: true, detail: 'Webhooks will no longer be signed with your organization secret, and receivers that verify signatures will reject them.' }, 'Remove');
+    if (!ok) {
+      return;
+    }
+    await this.run('Removing webhook secret', async () => {
+      await this.client().deleteWebhookSecret(orgId);
+      await this.loadOrg();
+    });
   }
 
   async revokeApiKey(keyId: string): Promise<void> {

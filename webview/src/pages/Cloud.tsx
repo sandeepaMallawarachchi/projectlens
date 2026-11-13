@@ -1,4 +1,4 @@
-import { Building2, Cloud as CloudIcon, CloudUpload, KeyRound, Link2, LogOut, Mail, Plus, RefreshCw, Play, Trash2, Unlink, Users, BrainCircuit, Gauge, Lock, Settings } from 'lucide-react';
+import { Webhook, Building2, Cloud as CloudIcon, CloudUpload, KeyRound, Link2, LogOut, Mail, Plus, RefreshCw, Play, Trash2, Unlink, Users, BrainCircuit, Gauge, Lock, Settings } from 'lucide-react';
 import type { AppState } from '../../../src/models/messages';
 import type { AIProviderId } from '../../../src/models/ai';
 import type { CloudProjectView, CloudRole } from '../../../src/models/cloud';
@@ -295,6 +295,28 @@ export function CloudPage({ state }: { state: AppState }) {
           <p className="small muted">
             Base URL: <span className="mono">{c.apiUrl}</span>
           </p>
+          {admin && c.webhookSecret && (
+            <div className="webhook-secret">
+              <div className="inline-title">
+                <Webhook size={14} /> Webhook signing secret
+              </div>
+              <p className="small muted">
+                {c.webhookSecret.configured
+                  ? `Webhooks are signed with your organization's secret (…${c.webhookSecret.last4 ?? ''}${c.webhookSecret.createdAt ? `, created ${relativeTime(c.webhookSecret.createdAt)}` : ''}).`
+                  : 'Create a secret so your systems can verify that webhooks (scan results, Prompt Guard alerts) really come from ProjectLens.'}
+              </p>
+              <div className="row-left">
+                <Button icon={<RefreshCw size={13} />} disabled={busy} onClick={() => post({ type: 'cloudRotateWebhookSecret' })}>
+                  {c.webhookSecret.configured ? 'Rotate secret' : 'Create secret'}
+                </Button>
+                {c.webhookSecret.configured && (
+                  <Button variant="ghost" icon={<Trash2 size={13} />} disabled={busy} onClick={() => post({ type: 'cloudRemoveWebhookSecret' })}>
+                    Remove
+                  </Button>
+                )}
+              </div>
+            </div>
+          )}
         </Section>
       </div>
 

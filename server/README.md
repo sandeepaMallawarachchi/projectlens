@@ -36,6 +36,7 @@ PM tool / scripts ──API key (plk_…)──▶          │
    - **New database:** run `supabase/schema.sql` in the Supabase SQL editor.
    - **Existing v0.1 database** (single-tenant, from the first deployment): run `supabase/migrations/002_multitenant.sql` instead. Existing projects and keys move into an organization called "Legacy workspace".
    - **Existing v0.2 database:** run `supabase/migrations/003_prompt_guard.sql` to add Prompt Guard (safe to run more than once).
+   - **Existing v0.3 database:** run `supabase/migrations/004_org_webhook_secret.sql` to add per-organization webhook secrets.
 2. **Vercel project:** set **Root Directory** to `server` and keep "Include files outside the root directory" enabled.
 3. **Environment variables** (see `.env.example`):
    - **Required:** `PROJECTLENS_ADMIN_KEY`, `PROJECTLENS_ENCRYPTION_KEY`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`.
@@ -110,7 +111,8 @@ Base URL: `https://<your-api>/api/v1`. The full spec is at `/api/v1/openapi.json
 | `GET` / `POST /keys`, `DELETE /keys/{id}` | admin | Organization API keys |
 | `GET /prompt-guard/policy` | read | Prompt Guard policy |
 | `PUT /prompt-guard/policy` | admin | Update any subset of `mode`, `notice`, `builtin`, `customRules`, `allowlist`, `webhookUrl` |
-| `GET /prompt-guard/events` | audit | Flagged-prompt metadata. Filters: `since`, `userId`, `tool`, `limit` |
+| `GET /prompt-guard/events` | audit | Flagged-prompt metadata. Filters: `since`, `userId`, `tool`, `limit` (max 500). Paginate with `before` = the previous page's `pagination.nextBefore` |
+| `GET` / `POST` / `DELETE /webhook-secret` | admin | Organization webhook signing secret: status, create or rotate (shown once), remove |
 | `GET /prompt-guard/summary`, `GET /prompt-guard/members` | audit | Totals and member coverage |
 
 **Prompt Guard** (session, used by the extension): `GET`/`PUT /orgs/{id}/prompt-guard/policy`, `POST /orgs/{id}/prompt-guard/consent`, `POST /orgs/{id}/prompt-guard/heartbeat`, `GET`/`POST /orgs/{id}/prompt-guard/events`, `GET /orgs/{id}/prompt-guard/members`, `GET /orgs/{id}/prompt-guard/summary`.
@@ -137,7 +139,10 @@ Owners and admins set a policy that the extension enforces on members' computers
 
 ## Webhooks
 
-Pass `callbackUrl` (HTTPS) when triggering a cloud scan. The server POSTs `scan.completed` or `scan.failed` with the header `X-ProjectLens-Signature: sha256=<HMAC of the raw body with PROJECTLENS_WEBHOOK_SECRET>`.
+Pass `callbackUrl` (HTTPS) when triggering a cloud scan. The server POSTs `scan.completed` or `scan.failed` with the header `X-ProjectLens-Signature: sha256=<HMAC-SHA256 of the raw body>`. Prompt Guard's `prompt.flagged` webhooks are signed the same way.
+
+- **Key:** the organization's own signing secret (`whsec_…`). Owners and admins create or rotate it in the extension (Cloud → API keys → Webhook signing secret) or with `POST /webhook-secret` and an admin key. It's shown once and stored encrypted. Each organization has its own secret, so one organization can't forge another's webhooks.
+- **Fallback:** when an organization has no secret, the server-wide `PROJECTLENS_WEBHOOK_SECRET` is used if set (meant for self-hosted, single-team setups). Otherwise the webhook is sent unsigned. Don't share the server-wide secret with customers on a multi-tenant deployment.
 
 ## Local development
 

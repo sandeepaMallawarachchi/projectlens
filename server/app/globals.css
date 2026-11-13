@@ -2153,3 +2153,76 @@ td.path.wrap {
     text-align: left;
   }
 }
+
+/* ───────── Credentials, scopes, troubleshooting ───────── */
+.cred-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin-top: 20px;
+}
+.cred {
+  display: flex;
+  gap: 12px;
+  padding: 16px 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-elev);
+}
+.cred h3 {
+  margin: 0 0 4px;
+  font-size: 15px;
+}
+.cred p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+.cred-tag {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  font-size: 13px;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.sub-head {
+  margin: 28px 0 10px;
+  font-size: 16px;
+}
+.trouble {
+  display: grid;
+  gap: 8px;
+}
+.trouble details {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-elev);
+  padding: 10px 14px;
+}
+.trouble summary {
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 14px;
+}
+.trouble details[open] summary {
+  margin-bottom: 6px;
+}
+.trouble p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.55;
+}
+.steps.compact {
+  margin: 4px 0 16px;
+}
+@media (max-width: 900px) {
+  .cred-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

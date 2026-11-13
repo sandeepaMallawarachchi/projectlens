@@ -356,7 +356,7 @@ export class MemoryStore implements Store {
   }
   async listPromptEvents(orgId: string, f: PromptEventFilter) {
     return this.promptEvents
-      .filter((e) => e.orgId === orgId && (!f.userId || e.userId === f.userId) && (!f.since || e.occurredAt >= f.since) && (!f.tool || e.tool === f.tool))
+      .filter((e) => e.orgId === orgId && (!f.userId || e.userId === f.userId) && (!f.since || e.occurredAt >= f.since) && (!f.before || e.occurredAt < f.before) && (!f.tool || e.tool === f.tool))
       .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt))
       .slice(0, f.limit);
   }

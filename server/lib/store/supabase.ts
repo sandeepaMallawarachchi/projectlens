@@ -333,6 +333,9 @@ export class SupabaseStore implements Store {
     if (f.since) {
       q = q.gte('occurred_at', f.since);
     }
+    if (f.before) {
+      q = q.lt('occurred_at', f.before);
+    }
     if (f.tool) {
       q = q.eq('tool', f.tool);
     }

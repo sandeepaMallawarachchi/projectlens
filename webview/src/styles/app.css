@@ -1779,3 +1779,11 @@ textarea.input {
     grid-template-columns: 1fr 1fr;
   }
 }
+
+.webhook-secret {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+  display: grid;
+  gap: 6px;
+}

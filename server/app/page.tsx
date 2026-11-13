@@ -101,7 +101,8 @@ const GROUPS: { title: string; note: string; endpoints: Endpoint[] }[] = [
       { method: 'GET', path: '/usage', scope: 'read', description: 'Usage and plan limits of your organization' },
       { method: 'GET', path: '/keys', scope: 'admin', description: 'List API keys' },
       { method: 'POST', path: '/keys', scope: 'admin', description: 'Create an API key (shown once)' },
-      { method: 'DELETE', path: '/keys/{id}', scope: 'admin', description: 'Revoke an API key' }
+      { method: 'DELETE', path: '/keys/{id}', scope: 'admin', description: 'Revoke an API key' },
+      { method: 'POST', path: '/webhook-secret', scope: 'admin', description: 'Create or rotate the webhook signing secret (shown once); GET shows status, DELETE removes it' }
     ]
   },
   {
@@ -110,7 +111,7 @@ const GROUPS: { title: string; note: string; endpoints: Endpoint[] }[] = [
     endpoints: [
       { method: 'GET', path: '/prompt-guard/policy', scope: 'read', description: 'Policy: mode (off | optional | required), notice, detectors, custom rules, allowlist' },
       { method: 'PUT', path: '/prompt-guard/policy', scope: 'admin', description: 'Update any subset. Changing mode or notice asks members to accept again' },
-      { method: 'GET', path: '/prompt-guard/events', scope: 'audit', description: 'Flagged prompts, metadata only (never prompt text). Filters: since, userId, tool' },
+      { method: 'GET', path: '/prompt-guard/events', scope: 'audit', description: 'Flagged prompts, metadata only (never prompt text). Filters: since, userId, tool. Pages of up to 500: pass pagination.nextBefore as ?before=' },
       { method: 'GET', path: '/prompt-guard/summary', scope: 'audit', description: 'Totals by rule, tool and category, and member consent. ?days=1-90' },
       { method: 'GET', path: '/prompt-guard/members', scope: 'audit', description: 'Consent status and protected AI tools per member' }
     ]
@@ -149,18 +150,57 @@ const STATUS_CODES: [string, string][] = [
   ['403', 'Key lacks the required scope, or not a member of the organization'],
   ['404', 'Not found in your organization'],
   ['409', 'A scan is already running'],
-  ['429', 'Rate limit or plan quota reached - see error.details']
+  ['429', 'Rate limit or plan quota reached - see error.details'],
+  ['5xx', 'ProjectLens or an upstream service (GitHub, GitLab, AI provider) failed - retry with backoff']
+];
+
+/** What to grant an API key, by what you are building. */
+const SCOPE_GUIDE: [string, string][] = [
+  ['Show project health in a dashboard', 'read'],
+  ['Register projects and trigger scans', 'read · scan'],
+  ['Request AI insights', 'read · ai'],
+  ['Show Prompt Guard reports', 'audit'],
+  ['Edit the Prompt Guard policy, manage keys or the webhook secret', 'admin (avoid for everyday integrations)'],
+  ['Health check (GET /health)', 'none - no key needed']
+];
+
+const TROUBLESHOOTING: [string, React.ReactNode][] = [
+  [
+    'Is the error from ProjectLens or from my backend?',
+    <>
+      ProjectLens errors always look like <code>{'{ "error": { "code", "message" } }'}</code>. A different shape (or an HTML error page) comes from your own backend, often a missing{' '}
+      <code>PROJECTLENS_API_KEY</code>, an old base URL, or an integration deployed before an API change. Test the key directly: <code>curl $PL_API/usage -H &quot;Authorization: Bearer $PL_KEY&quot;</code>.
+    </>
+  ],
+  ['401 unauthorized', <>The key is mistyped, revoked, or not a <code>plk_…</code> key. Create a new one in VS Code → ProjectLens → Cloud → API keys.</>],
+  ['403 forbidden', <>The key lacks a scope for this endpoint (see the table above). Create a key with the needed scope; scopes cannot be added to an existing key.</>],
+  [
+    '400 when registering or scanning a private repository',
+    <>
+      The repository token is missing or cannot read that repository. Use a GitHub token with <em>Contents: Read</em> on the repository, or a GitLab token with <em>read_repository</em>.
+      Connecting GitLab or GitHub to another tool does not give ProjectLens access.
+    </>
+  ],
+  ['400 ai_not_configured', <>Add your organization&apos;s AI key in VS Code → ProjectLens → Cloud → Cloud AI keys.</>],
+  ['Scan stays queued or running', <>Keep polling <code>GET /scans/{'{id}'}</code> every 3 to 5 seconds; most scans finish in under a minute. A <code>failed</code> scan has the reason in <code>error</code>.</>],
+  [
+    'Webhook signature does not match',
+    <>
+      Compute the HMAC over the <strong>raw</strong> request body (before JSON parsing) with your organization&apos;s webhook secret. If an admin rotated the secret, update it in your
+      backend.
+    </>
+  ]
 ];
 
 const TERMINAL_LINES = [
   <><span className="t-prompt">$</span> curl $PL_API/projects/ext:pm-42 -H <span className="t-str">&quot;Authorization: Bearer plk_…&quot;</span></>,
   <span className="t-status">HTTP/2 200</span>,
-  <>{'{'} <span className="t-key">&quot;latestScan&quot;</span>: {'{'} <span className="t-key">&quot;overview&quot;</span>: {'{'}</>,
+  <>{'{'} <span className="t-key">&quot;data&quot;</span>: {'{'} <span className="t-key">&quot;latestScan&quot;</span>: {'{'} <span className="t-key">&quot;overview&quot;</span>: {'{'}</>,
   <>  <span className="t-key">&quot;primaryFramework&quot;</span>: <span className="t-str">&quot;Next.js&quot;</span>,</>,
   <>  <span className="t-key">&quot;findings&quot;</span>: {'{'} <span className="t-key">&quot;critical&quot;</span>: <span className="t-num">0</span>, <span className="t-key">&quot;high&quot;</span>: <span className="t-num">2</span> {'}'},</>,
   <>  <span className="t-key">&quot;progress&quot;</span>: {'{'} <span className="t-key">&quot;estimate&quot;</span>: <span className="t-num">78</span>, <span className="t-key">&quot;modules&quot;</span>: <span className="t-muted">[…]</span> {'}'},</>,
   <>  <span className="t-key">&quot;topRisks&quot;</span>: <span className="t-muted">[ {'{'} &quot;title&quot;: &quot;SQL built from…&quot;, &quot;url&quot;: &quot;…#L42&quot; {'}'} ]</span></>,
-  <>{'}'} {'}'} {'}'}<span className="t-cursor" /></>
+  <>{'}'} {'}'} {'}'} {'}'}<span className="t-cursor" /></>
 ];
 
 const HERO_SCORES: [string, number, string][] = [
@@ -179,25 +219,41 @@ export default async function Home() {
   const operational = e.storage === 'supabase';
   const email = emailEnabled();
 
-  const curlSample = `# Your organization API key (create it in VS Code → ProjectLens → Cloud → API keys)
+  const curlSample = `# Complete flow: register → scan → wait → results. Needs curl and jq.
+# Your organization API key (VS Code → ProjectLens → Cloud → API keys), scopes read + scan
 export PL_KEY=plk_your_key
 export PL_API=${base}
+AUTH="Authorization: Bearer $PL_KEY"
 
-# 1. Register a project (use your own tool's id as externalId)
-curl -X POST $PL_API/projects -H "Authorization: Bearer $PL_KEY" \\
-  -H "content-type: application/json" \\
+# 1. Register the project once (externalId = your tool's own id).
+#    accessToken is a read-only REPOSITORY token, only needed for private repositories.
+curl -sS -X POST "$PL_API/projects" -H "$AUTH" -H "content-type: application/json" \\
   -d '{"name":"Customer Portal","provider":"github","repository":"acme/portal","externalId":"pm-42","accessToken":"github_pat_…"}'
 
-# 2. Run a cloud scan (returns 202; poll GET /scans/{id})
-curl -X POST $PL_API/projects/ext:pm-42/scans -H "Authorization: Bearer $PL_KEY" \\
-  -H "content-type: application/json" -d '{"mode":"full"}'
+# 2. Start a full scan and keep its id
+SCAN_ID=$(curl -sS -X POST "$PL_API/projects/ext:pm-42/scans" -H "$AUTH" \\
+  -H "content-type: application/json" -d '{"mode":"full"}' | jq -r '.data.id')
 
-# 3. Read the overview: scores, progress, top risks, trend
-curl $PL_API/projects/ext:pm-42 -H "Authorization: Bearer $PL_KEY"`;
+# 3. Wait until it finishes
+while true; do
+  STATUS=$(curl -sS "$PL_API/scans/$SCAN_ID" -H "$AUTH" | jq -r '.data.status')
+  echo "scan $SCAN_ID: $STATUS"
+  if [ "$STATUS" = completed ] || [ "$STATUS" = failed ]; then break; fi
+  sleep 3
+done
+
+# 4. Show scores and the top high-severity findings
+curl -sS "$PL_API/scans/$SCAN_ID" -H "$AUTH" | jq '.data.overview.scores'
+curl -sS "$PL_API/scans/$SCAN_ID/findings?severity=high&limit=5" -H "$AUTH" \\
+  | jq '.data[] | {title, severity, url}'`;
 
   const tsSample = `// Server-side only - never expose the key to the browser.
 const BASE = process.env.PROJECTLENS_API_URL!; // ${base}
 const KEY = process.env.PROJECTLENS_API_KEY!;  // plk_…
+
+class ProjectLensError extends Error {
+  constructor(public status: number, public code: string, message: string) { super(message); }
+}
 
 async function projectlens<T>(path: string, init: RequestInit = {}): Promise<T> {
   const res = await fetch(\`\${BASE}\${path}\`, {
@@ -205,13 +261,29 @@ async function projectlens<T>(path: string, init: RequestInit = {}): Promise<T> 
     headers: { authorization: \`Bearer \${KEY}\`, 'content-type': 'application/json', ...init.headers },
     cache: 'no-store'
   });
-  const body = await res.json();
-  if (!res.ok) throw new Error(body.error?.message ?? \`ProjectLens \${res.status}\`);
-  return body.data as T;
+  const body = await res.json().catch(() => null);
+  // ProjectLens errors are always { error: { code, message } }.
+  if (!res.ok) throw new ProjectLensError(res.status, body?.error?.code ?? 'http_error', body?.error?.message ?? \`ProjectLens \${res.status}\`);
+  return body.data as T; // every response is wrapped as { data: … }
 }
 
-const overview = await projectlens<any>('/projects/ext:pm-42');
-console.log(overview.latestScan?.overview.scores.security.score);`;
+type Scan = { id: string; status: 'queued' | 'running' | 'completed' | 'failed'; error: string | null; overview: any };
+
+/** Starts a full scan and resolves when it has finished. */
+export async function scanAndWait(externalId: string, timeoutMs = 5 * 60_000): Promise<Scan> {
+  let scan = await projectlens<Scan>(\`/projects/ext:\${externalId}/scans\`, { method: 'POST', body: JSON.stringify({ mode: 'full' }) });
+  const deadline = Date.now() + timeoutMs;
+  while (scan.status === 'queued' || scan.status === 'running') {
+    if (Date.now() > deadline) throw new Error('Scan is still running; check again later');
+    await new Promise((r) => setTimeout(r, 3000));
+    scan = await projectlens<Scan>(\`/scans/\${scan.id}\`);
+  }
+  if (scan.status === 'failed') throw new Error(\`Scan failed: \${scan.error}\`);
+  return scan;
+}
+
+const scan = await scanAndWait('pm-42');
+console.log(scan.overview.scores.security.score);`;
 
   const aiPrompt = `Integrate the ProjectLens Cloud API into this application.
 
@@ -250,7 +322,7 @@ ProjectLens analyzes GitHub/GitLab projects and reports code quality, security, 
 Team members' prompts to Claude Code, Codex, Cursor, GitHub Copilot and Antigravity are checked on their own computers by the ProjectLens extension. Prompt text is never uploaded; the API only holds the policy and metadata events.
 - GET /prompt-guard/policy (scope read) → { mode: "off"|"optional"|"required", notice, consentVersion, builtin: { secrets, "pii.card", "pii.email", "pii.phone": "off"|"warn"|"redact"|"block" }, customRules: [{ id, name, type: "term"|"regex", pattern, action }], allowlist: string[], webhookUrl, version }
 - PUT /prompt-guard/policy (scope admin) with any subset of those fields. Changing mode or notice makes members accept again. "required" withholds organization projects from members until they accept.
-- GET /prompt-guard/events?since=&userId=&tool=&limit= (scope audit) → [{ id, userId, tool, action: "blocked"|"warned"|"detected", ruleIds, categories, project, occurredAt }]. "detected" = sent anyway (Copilot hooks cannot block).
+- GET /prompt-guard/events?since=&before=&userId=&tool=&limit= (scope audit, max 500 per page; use pagination.nextBefore as the next ?before=) → [{ id, userId, tool, action: "blocked"|"warned"|"detected", ruleIds, categories, project, occurredAt }]. "detected" = sent anyway (Copilot hooks cannot block).
 - GET /prompt-guard/summary?days=30 and GET /prompt-guard/members (scope audit) for dashboards.
 - Optional webhook: set webhookUrl in the policy to receive signed "prompt.flagged" events (same signature scheme as scan webhooks).
 Show events as compliance metadata: never imply that ProjectLens has the prompt text.
@@ -259,7 +331,16 @@ Show events as compliance metadata: never imply that ProjectLens has the prompt 
 scores.{quality,security,implementation,readiness}.{score,grade,verdict}; findings.{total,bySeverity,needsReview}; progress.{label,estimate,modules[{name,status,completion}]}; technologies[]; topRisks[{title,severity,file,line,url}]; recommendedActions[{title,detail,priority}]
 
 ## Optional webhooks
-Send callbackUrl (HTTPS) when triggering a scan. ProjectLens POSTs { event: "scan.completed"|"scan.failed", data: { externalId, scan } } with header X-ProjectLens-Signature: sha256=<HMAC-SHA256 of the raw body using PROJECTLENS_WEBHOOK_SECRET>. Verify with a constant-time comparison before trusting it.
+Send callbackUrl (HTTPS) when triggering a scan. ProjectLens POSTs { event: "scan.completed"|"scan.failed", sentAt, data: { projectId, externalId, scan } } with header X-ProjectLens-Signature: sha256=<HMAC-SHA256 of the raw request body>. The key is the organization's webhook signing secret ("whsec_…"), created by an owner/admin in the VS Code extension (Cloud → API keys → Webhook signing secret) or via POST /webhook-secret with an admin key, and shown once. Store it server-side as PROJECTLENS_WEBHOOK_SECRET, compute the HMAC over the raw body (before JSON parsing), and compare in constant time before trusting the payload.
+
+## Two different credentials
+- PROJECTLENS_API_KEY ("plk_…") authenticates this app to ProjectLens.
+- A repository token (GitHub "Contents: Read" or GitLab "read_repository"), passed as accessToken on POST/PATCH /projects, lets ProjectLens download a PRIVATE repository. It is not needed for public repositories. An existing GitHub/GitLab connection in this app does not give ProjectLens access.
+
+## Polling and pagination
+- After POST /projects/{id}/scans returns 202, take data.id and poll GET /scans/{id} every 3-5 s until data.status is "completed" or "failed" (most scans finish in under a minute). Stop after a timeout.
+- GET /scans/{id}/findings uses limit/offset (pagination.total). GET /prompt-guard/events returns pagination.nextBefore; pass it as ?before= to get older events.
+- Distinguish ProjectLens errors ({ error: { code, message } }) from errors in this app's own backend when showing messages.
 
 ## What to build
 1. A typed server-side client module for the endpoints above with proper error handling.
@@ -272,8 +353,9 @@ Follow this codebase's existing conventions, UI components and patterns.`;
 
   const webhookSample = `import { createHmac, timingSafeEqual } from 'node:crypto';
 
+// PROJECTLENS_WEBHOOK_SECRET = your organization's signing secret (whsec_…)
 export async function POST(req: Request) {
-  const raw = await req.text();
+  const raw = await req.text(); // raw body: hash it before parsing JSON
   const expected = 'sha256=' + createHmac('sha256', process.env.PROJECTLENS_WEBHOOK_SECRET!).update(raw).digest('hex');
   const received = req.headers.get('x-projectlens-signature') ?? '';
   const ok = received.length === expected.length && timingSafeEqual(Buffer.from(received), Buffer.from(expected));
@@ -642,6 +724,46 @@ export async function POST(req: Request) {
             <div className="callout callout-warn" style={{ marginTop: 16 }}>
               <strong>Keep keys on the server.</strong> Call the API from your backend (API routes, server actions, jobs) - never from browser code.
             </div>
+            <div className="cred-grid reveal">
+              <div className="cred">
+                <span className="cred-tag">1</span>
+                <div>
+                  <h3>ProjectLens API key</h3>
+                  <p>
+                    <code>plk_…</code> - proves your integration may use your organization&apos;s data. Always required. Created in VS Code → ProjectLens → Cloud → API keys.
+                  </p>
+                </div>
+              </div>
+              <div className="cred">
+                <span className="cred-tag">2</span>
+                <div>
+                  <h3>Repository token</h3>
+                  <p>
+                    Lets ProjectLens download a <strong>private</strong> repository for cloud scans: GitHub <em>Contents: Read</em> or GitLab <em>read_repository</em>, sent as{' '}
+                    <code>accessToken</code>. Not needed for public repositories. A GitHub or GitLab connection in another tool does not give ProjectLens access.
+                  </p>
+                </div>
+              </div>
+            </div>
+            <h3 className="sub-head reveal">Which scopes do I need?</h3>
+            <div className="table-wrap reveal">
+              <table className="stack-table">
+                <thead>
+                  <tr>
+                    <th>You are building</th>
+                    <th>Scopes</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {SCOPE_GUIDE.map(([what, scopes]) => (
+                    <tr key={what}>
+                      <td>{what}</td>
+                      <td className="path wrap">{scopes}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         </section>
 
@@ -737,6 +859,15 @@ export async function POST(req: Request) {
                 <strong>Free plan, per organization:</strong> {l.projects} projects · {l.cloudScansPerDay} cloud scans, {l.uploadsPerDay} uploads and {l.aiInsightsPerDay} AI
                 insights per 24 h · one scan per project per minute.
               </div>
+              <h3 className="sub-head">Troubleshooting</h3>
+              <div className="trouble reveal">
+                {TROUBLESHOOTING.map(([q, a]) => (
+                  <details key={q}>
+                    <summary>{q}</summary>
+                    <p>{a}</p>
+                  </details>
+                ))}
+              </div>
             </div>
           </div>
         </section>
@@ -748,12 +879,31 @@ export async function POST(req: Request) {
                 <div className="kicker">Webhooks</div>
                 <h2>Get notified when scans finish</h2>
                 <p>
-                  Pass <code>callbackUrl</code> (HTTPS) when triggering a scan. ProjectLens POSTs <code>scan.completed</code> or <code>scan.failed</code>, signed with{' '}
-                  <code>X-ProjectLens-Signature: sha256=…</code> (HMAC-SHA256 of the raw body with the shared webhook secret).
+                  Pass <code>callbackUrl</code> (HTTPS) when triggering a scan. ProjectLens POSTs <code>scan.completed</code> or <code>scan.failed</code> with{' '}
+                  <code>X-ProjectLens-Signature: sha256=…</code>, an HMAC-SHA256 of the raw body using your organization&apos;s signing secret.
                 </p>
               </div>
+              <ol className="steps compact">
+                <li>
+                  <h3>Create your signing secret</h3>
+                  <p>
+                    An owner or admin opens VS Code → ProjectLens → <strong>Cloud → API keys → Webhook signing secret</strong> (or calls <code>POST /webhook-secret</code> with an admin key).
+                    It starts with <code>whsec_</code> and is shown once. Each organization has its own secret.
+                  </p>
+                </li>
+                <li>
+                  <h3>Store it in your backend</h3>
+                  <p>
+                    Save it as <code>PROJECTLENS_WEBHOOK_SECRET</code> next to your API key. Prompt Guard alerts (<code>prompt.flagged</code>) are signed the same way.
+                  </p>
+                </li>
+                <li>
+                  <h3>Verify every request</h3>
+                  <p>Hash the raw body before parsing JSON and compare in constant time. Rotating the secret takes effect immediately.</p>
+                </li>
+              </ol>
               <p className="muted">
-                Without webhooks, poll <code>GET /scans/{'{id}'}</code> every few seconds until the status is <code>completed</code> or <code>failed</code>.
+                Without webhooks, poll <code>GET /scans/{'{id}'}</code> every 3 to 5 seconds until the status is <code>completed</code> or <code>failed</code>.
               </p>
             </div>
             <div className="reveal reveal-delay-1">

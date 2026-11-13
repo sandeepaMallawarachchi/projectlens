@@ -14,6 +14,10 @@ export interface OrgRecord {
   /** Default provider/model for server-side AI insights (keys are in org AI keys). */
   aiProvider: AIProviderId | null;
   aiModel: string | null;
+  /** Per-organization webhook signing secret (AES-256-GCM encrypted). Shown to admins once. */
+  webhookSecretEncrypted?: string | null;
+  webhookSecretLast4?: string | null;
+  webhookSecretCreatedAt?: string | null;
   createdAt: string;
 }
 
@@ -167,6 +171,8 @@ export interface PromptEventRecord extends PromptEvent {
 export interface PromptEventFilter {
   userId?: string;
   since?: string;
+  /** Only events strictly older than this (pagination cursor). */
+  before?: string;
   tool?: AiTool;
   limit: number;
 }

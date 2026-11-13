@@ -11,6 +11,9 @@ create table if not exists organizations (
   plan text not null default 'free',
   ai_provider text,
   ai_model text,
+  webhook_secret_encrypted text,
+  webhook_secret_last4 text,
+  webhook_secret_created_at timestamptz,
   created_at timestamptz not null default now()
 );
 

@@ -188,6 +188,15 @@ export class CloudClient {
   setAiSettings(orgId: string, provider: string | null, model: string | null) {
     return this.request<CloudOrg>('PUT', `/orgs/${orgId}/ai-settings`, { provider, model });
   }
+  webhookSecretStatus(orgId: string) {
+    return this.request<{ configured: boolean; last4: string | null; createdAt: string | null }>('GET', `/orgs/${orgId}/webhook-secret`);
+  }
+  rotateWebhookSecret(orgId: string) {
+    return this.request<{ secret: string; last4: string; createdAt: string }>('POST', `/orgs/${orgId}/webhook-secret`);
+  }
+  deleteWebhookSecret(orgId: string) {
+    return this.request<void>('DELETE', `/orgs/${orgId}/webhook-secret`);
+  }
   usage(orgId: string) {
     return this.request<CloudUsage>('GET', `/orgs/${orgId}/usage`);
   }

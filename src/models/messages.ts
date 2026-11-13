@@ -51,6 +51,8 @@ export const webviewMessageSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('cloudRevokeInvite'), invitationId: z.string().uuid() }),
   z.object({ type: z.literal('cloudCreateKey') }),
   z.object({ type: z.literal('cloudRevokeKey'), keyId: z.string().uuid() }),
+  z.object({ type: z.literal('cloudRotateWebhookSecret') }),
+  z.object({ type: z.literal('cloudRemoveWebhookSecret') }),
   z.object({ type: z.literal('cloudSetAiKey'), provider: z.enum(AI_PROVIDER_IDS) }),
   z.object({ type: z.literal('cloudRemoveAiKey'), provider: z.enum(AI_PROVIDER_IDS) }),
   z.object({ type: z.literal('cloudSetAiDefault'), provider: z.enum(AI_PROVIDER_IDS) }),

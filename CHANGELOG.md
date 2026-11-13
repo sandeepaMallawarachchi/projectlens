@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.0
+
+- **Webhook signing secret per organization:** owners and admins can create, rotate or remove their organization's webhook secret on the Cloud page (under API keys). Integrations use it to verify that scan and Prompt Guard webhooks really come from ProjectLens. Like API keys, it's shown once in a VS Code dialog and never in the dashboard.
+- **Cloud API (requires a backend deployment and `supabase/migrations/004_org_webhook_secret.sql`):** webhooks are now signed with each organization's own secret. Prompt Guard events support pagination with `before` / `pagination.nextBefore`. The documentation adds a complete scan-and-poll example, the two credentials explained, a scope guide and troubleshooting.
+
 ## 0.3.2
 
 - **Prompt Guard on Windows:** fixed the Claude Code hook not running on Windows, so prompts were not checked there. Claude Code runs hooks through Git Bash (or PowerShell), which could not start the hook from its Windows path. The hook is now installed with PowerShell, as Claude Code's documentation recommends.

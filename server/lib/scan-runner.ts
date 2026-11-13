@@ -125,7 +125,7 @@ async function executeScan(project: ProjectRecord, scan: ScanRecord, source: Rep
     await cleanup?.().catch(() => undefined);
   }
   if (current.callbackUrl) {
-    await sendWebhook(current.callbackUrl, current.status === 'completed' ? 'scan.completed' : 'scan.failed', { projectId: project.id, externalId: project.externalId, scan: scanDto(current) });
+    await sendWebhook(current.callbackUrl, current.status === 'completed' ? 'scan.completed' : 'scan.failed', { projectId: project.id, externalId: project.externalId, scan: scanDto(current) }, current.orgId);
   }
   return current;
 }

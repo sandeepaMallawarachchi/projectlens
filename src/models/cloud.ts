@@ -31,6 +31,8 @@ export interface CloudState {
   apiKeys: { id: string; name: string; prefix: string; scopes: string[]; createdAt: string; lastUsedAt: string | null; revokedAt: string | null }[];
   aiKeys: { provider: string; label: string; configured: boolean; last4: string | null; defaultModel: string }[];
   aiDefaultProvider: string | null;
+  /** Webhook signing secret status (admins only; the secret itself is never in the state). */
+  webhookSecret: { configured: boolean; last4: string | null; createdAt: string | null } | null;
   projects: CloudProjectView[];
   linkedProjectId: string | null;
   usage: {
@@ -56,6 +58,7 @@ export const EMPTY_CLOUD_STATE = (apiUrl: string): CloudState => ({
   apiKeys: [],
   aiKeys: [],
   aiDefaultProvider: null,
+  webhookSecret: null,
   projects: [],
   linkedProjectId: null,
   usage: null,

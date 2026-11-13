@@ -294,6 +294,10 @@ export class ProjectLensController implements vscode.Disposable {
         return this.cloud.createApiKey();
       case 'cloudRevokeKey':
         return this.cloud.revokeApiKey(msg.keyId);
+      case 'cloudRotateWebhookSecret':
+        return this.cloud.rotateWebhookSecret();
+      case 'cloudRemoveWebhookSecret':
+        return this.cloud.removeWebhookSecret();
       case 'cloudSetAiKey':
         return this.cloud.setAiKey(msg.provider);
       case 'cloudRemoveAiKey':
