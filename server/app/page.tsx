@@ -5,7 +5,9 @@ import { limits } from '@/lib/quotas';
 import { CodeBlock } from './components/CodeBlock';
 import { ExtensionTour } from './components/ExtensionTour';
 import { ThemeToggle } from './components/ThemeToggle';
-import { GitHubIcon, GitLabIcon, PlugIcon, SparklesIcon, VSCodeIcon, BracesIcon, ActivityIcon } from './components/BrandIcons';
+import { CopyChip } from './components/CopyChip';
+import { EXTENSION_ID, MARKETPLACE_URL, OPEN_VSX_URL, storeVersions } from '@/lib/store-versions';
+import { GitHubIcon, GitLabIcon, PlugIcon, SparklesIcon, VSCodeIcon, BracesIcon, ActivityIcon, CursorIcon, WindsurfIcon, VSCodiumIcon, OpenVSXIcon } from './components/BrandIcons';
 import { NavLinks } from './components/NavLinks';
 import { ScrollEffects } from './components/ScrollEffects';
 
@@ -22,6 +24,42 @@ interface Endpoint {
   scope: string;
   description: string;
 }
+
+/** Editors that install from Open VSX. */
+const OPEN_VSX_EDITORS = ['Cursor', 'Antigravity', 'Windsurf', 'VSCodium'] as const;
+
+function EditorIcon({ name, size = 16 }: { name: (typeof OPEN_VSX_EDITORS)[number]; size?: number }) {
+  switch (name) {
+    case 'Cursor':
+      return <CursorIcon size={size} />;
+    case 'Windsurf':
+      return <WindsurfIcon size={size} />;
+    case 'VSCodium':
+      return <VSCodiumIcon size={size} />;
+    default:
+      // Official Antigravity mark (gradient), from antigravity.google.
+      return <Image src="/brands/antigravity.svg" alt="" width={size} height={size} />;
+  }
+}
+
+function EditorTile({ name }: { name: (typeof OPEN_VSX_EDITORS)[number] }) {
+  return (
+    <span className="editor-chip">
+      <EditorIcon name={name} />
+      {name}
+    </span>
+  );
+}
+
+function ShieldNoteIcon() {
+  return (
+    <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z" />
+      <path d="m9 12 2 2 4-4" />
+    </svg>
+  );
+}
+
 
 const GROUPS: { title: string; note: string; endpoints: Endpoint[] }[] = [
   {
@@ -134,6 +172,7 @@ const HERO_SCORES: [string, number, string][] = [
 
 export default async function Home() {
   // Examples always show the public production URL, regardless of where the page is served from.
+  const versions = await storeVersions();
   const base = `${(process.env.PROJECTLENS_PUBLIC_URL || 'https://projectlensai.vercel.app').replace(/\/+$/, '')}/api/v1`;
   const e = env();
   const l = limits();
@@ -274,9 +313,9 @@ export async function POST(req: Request) {
                 system through one REST API.
               </p>
               <div className="actions anim anim-4">
-                <a className="btn btn-primary" href={MARKETPLACE} target="_blank" rel="noreferrer">
+                <a className="btn btn-primary" href="#install">
                   <VSCodeIcon size={16} mono />
-                  Install the VS Code extension
+                  Install the extension
                 </a>
                 <a className="btn" href="#get-started">
                   Read the guide
@@ -285,17 +324,28 @@ export async function POST(req: Request) {
                   OpenAPI spec
                 </a>
               </div>
-              <div className="platforms anim anim-5" aria-label="Supported platforms">
-                <span>Works with</span>
-                <span className="platform">
-                  <VSCodeIcon size={16} /> VS Code
-                </span>
-                <span className="platform">
-                  <GitHubIcon size={16} /> GitHub
-                </span>
-                <span className="platform">
-                  <GitLabIcon size={16} /> GitLab
-                </span>
+              <div className="platforms anim anim-5">
+                <div className="platform-row" aria-label="Supported editors">
+                  <span className="platform-label">Editors</span>
+                  <span className="platform">
+                    <VSCodeIcon size={16} /> VS Code
+                  </span>
+                  {OPEN_VSX_EDITORS.slice(0, 3).map((e) => (
+                    <EditorTile key={e} name={e} />
+                  ))}
+                  <a className="platform-more" href="#install">
+                    + more
+                  </a>
+                </div>
+                <div className="platform-row" aria-label="Supported repositories">
+                  <span className="platform-label">Repos</span>
+                  <span className="platform">
+                    <GitHubIcon size={16} /> GitHub
+                  </span>
+                  <span className="platform">
+                    <GitLabIcon size={16} /> GitLab
+                  </span>
+                </div>
               </div>
             </div>
             <div className="terminal anim" role="img" aria-label="Example: requesting a project overview returns scores, progress and top risks">
@@ -377,10 +427,79 @@ export async function POST(req: Request) {
               <ExtensionTour />
             </div>
             <p className="tour-foot reveal">
-              <a className="btn btn-primary" href={MARKETPLACE} target="_blank" rel="noreferrer">
-                <VSCodeIcon size={16} mono /> Install ProjectLens AI
-              </a>
               <span>Illustrations use sample data.</span>
+            </p>
+          </div>
+        </section>
+
+        <section className="section" id="install">
+          <div className="container">
+            <div className="section-head reveal">
+              <div className="kicker">Install</div>
+              <h2>Available for VS Code, Cursor, Antigravity and more</h2>
+              <p>The same free extension in every VS Code-based editor. Pick the store your editor uses.</p>
+            </div>
+            <div className="install-grid">
+              <article className="install-card reveal">
+                <header className="install-head">
+                  <span className="install-icon install-icon-vscode">
+                    <VSCodeIcon size={24} />
+                  </span>
+                  <div>
+                    <h3>VS Code Marketplace</h3>
+                    <p>For Visual Studio Code</p>
+                  </div>
+                  {versions.marketplace && <span className="version-badge">v{versions.marketplace}</span>}
+                </header>
+                <div className="editor-list">
+                  <span className="editor-chip">
+                    <VSCodeIcon size={16} /> VS Code
+                  </span>
+                </div>
+                <div className="install-actions">
+                  <a className="btn btn-primary" href={`vscode:extension/${EXTENSION_ID}`}>
+                    <VSCodeIcon size={16} mono /> Open in VS Code
+                  </a>
+                  <a className="btn" href={MARKETPLACE_URL} target="_blank" rel="noreferrer">
+                    View on Marketplace
+                  </a>
+                </div>
+                <div className="install-alt">
+                  <span>Or press Ctrl/Cmd+P in VS Code and run:</span>
+                  <CopyChip value={`ext install ${EXTENSION_ID}`} label="VS Code install command" />
+                </div>
+              </article>
+              <article className="install-card reveal reveal-delay-1">
+                <header className="install-head">
+                  <span className="install-icon">
+                    <OpenVSXIcon size={24} />
+                  </span>
+                  <div>
+                    <h3>Open VSX Registry</h3>
+                    <p>For Cursor, Antigravity and other VS Code-based editors</p>
+                  </div>
+                  {versions.openVsx && <span className="version-badge">v{versions.openVsx}</span>}
+                </header>
+                <div className="editor-list">
+                  {OPEN_VSX_EDITORS.map((e) => (
+                    <EditorTile key={e} name={e} />
+                  ))}
+                </div>
+                <div className="install-actions">
+                  <a className="btn btn-primary" href={OPEN_VSX_URL} target="_blank" rel="noreferrer">
+                    View on Open VSX
+                  </a>
+                </div>
+                <div className="install-alt">
+                  <span>
+                    In your editor, open the Extensions view and search <strong>ProjectLens AI</strong>, or paste the ID:
+                  </span>
+                  <CopyChip value={EXTENSION_ID} label="extension ID" />
+                </div>
+              </article>
+            </div>
+            <p className="install-note reveal">
+              <ShieldNoteIcon /> Prompt Guard protects Claude Code, Codex, Cursor, GitHub Copilot and Antigravity, whichever editor you install ProjectLens in.
             </p>
           </div>
         </section>
@@ -399,7 +518,7 @@ export async function POST(req: Request) {
                     <VSCodeIcon size={16} /> Install the extension
                   </h3>
                   <p>
-                    Install <a href={MARKETPLACE} target="_blank" rel="noreferrer">ProjectLens AI</a> from the VS Code Marketplace and click the ProjectLens icon in the Activity Bar.
+                    Install <a href={MARKETPLACE} target="_blank" rel="noreferrer">ProjectLens AI</a> from the VS Code Marketplace, or from <a href={OPEN_VSX_URL} target="_blank" rel="noreferrer">Open VSX</a> in Cursor, Antigravity and other editors (<a href="#install">install options</a>). Then click the ProjectLens icon in the Activity Bar.
                   </p>
                 </li>
                 <li>
