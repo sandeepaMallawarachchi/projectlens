@@ -7,7 +7,7 @@ const nextConfig: NextConfig = {
   outputFileTracingRoot: root,
   turbopack: { root },
   // Loaded at runtime with require(); they must not be bundled.
-  serverExternalPackages: ['typescript', 'eslint', 'typescript-eslint', 'groq-sdk', 'openai', '@google/genai', '@anthropic-ai/sdk'],
+  serverExternalPackages: ['typescript', 'eslint', 'typescript-eslint', 'groq-sdk', 'openai', '@google/genai', '@anthropic-ai/sdk', 'nodemailer'],
   outputFileTracingIncludes: {
     '/api/**/*': ['./node_modules/typescript/lib/typescript.js', './node_modules/eslint/**/*', './node_modules/typescript-eslint/**/*', './node_modules/@typescript-eslint/**/*']
   },

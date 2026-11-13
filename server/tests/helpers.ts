@@ -13,7 +13,7 @@ export const SHA = 'a'.repeat(40);
 
 export function resetEnv(extra: Record<string, string> = {}) {
   for (const k of Object.keys(process.env)) {
-    if (/^(PROJECTLENS_|SUPABASE_|STORAGE|ALLOW_|SCAN_|MAX_|AI_|GROQ_|OPENAI_|GEMINI_|ANTHROPIC_|WEBHOOK_|GITLAB_|FREE_|RESEND_|EMAIL_)/.test(k)) {
+    if (/^(PROJECTLENS_|SUPABASE_|STORAGE|ALLOW_|SCAN_|MAX_|AI_|GROQ_|OPENAI_|GEMINI_|ANTHROPIC_|WEBHOOK_|GITLAB_|FREE_|RESEND_|EMAIL_|SMTP_)/.test(k)) {
       delete process.env[k];
     }
   }

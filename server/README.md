@@ -39,7 +39,10 @@ PM tool / scripts ──API key (plk_…)──▶          │
 2. **Vercel project:** set **Root Directory** to `server` and keep "Include files outside the root directory" enabled.
 3. **Environment variables** (see `.env.example`):
    - **Required:** `PROJECTLENS_ADMIN_KEY`, `PROJECTLENS_ENCRYPTION_KEY`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`.
-   - **Email sign-in:** `RESEND_API_KEY` and `EMAIL_FROM`, with a domain verified in Resend. Without them, only GitHub sign-in is offered.
+   - **Email sign-in** (codes and invitations), one of:
+     - **Gmail or any SMTP server:** `SMTP_USER` and `SMTP_PASS`. For Gmail, use a dedicated account with 2-Step Verification and an [app password](https://myaccount.google.com/apppasswords); host and port default to `smtp.gmail.com:465`. Optional: `SMTP_HOST`, `SMTP_PORT` (587 uses STARTTLS), `EMAIL_FROM`.
+     - **Resend:** `RESEND_API_KEY` and `EMAIL_FROM`, with a domain verified in Resend.
+     - Without either, only GitHub sign-in is offered.
    - **Optional:** webhooks (`PROJECTLENS_WEBHOOK_SECRET`, `WEBHOOK_ALLOWED_HOSTS`) and free-plan limits (`FREE_MAX_*`).
    - **Server AI keys** (`GROQ_API_KEY`, …) are only used when `ALLOW_SERVER_AI_KEYS=true`. By default, organizations bring their own keys.
 4. **Deploy**, then check `GET /api/v1/health`. It should show `"storage":"supabase"` and which sign-in methods are enabled.
